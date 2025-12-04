@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { 
   Users, 
   ShoppingCart, 
@@ -7,11 +7,14 @@ import {
   TrendingUp,
   Activity,
   RefreshCw,
+  CloudDownload,
+  Loader2,
 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatusBadge } from "@/components/status-badge";
+import { useToast } from "@/hooks/use-toast";
 
 interface AdminStats {
   onedashBalance: number;
@@ -31,9 +34,62 @@ interface AdminStats {
   }>;
 }
 
+interface OneDashOrder {
+  order_id: number;
+  tariff: { id: number; name: string };
+  location: string;
+  vps_list: Array<{
+    id: number;
+    os: string;
+    vps_ip: string;
+    vps_status: "runned" | "not_runned" | "cloning";
+  }>;
+  finish_time: {
+    epoch: number;
+    days_remaining: number;
+    date: string;
+  };
+}
+
 export default function AdminDashboard() {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  
   const { data: stats, isLoading, refetch, isRefetching } = useQuery<AdminStats>({
     queryKey: ["/api/admin/stats"],
+  });
+
+  const { data: onedashOrders, isLoading: onedashLoading } = useQuery<OneDashOrder[]>({
+    queryKey: ["/api/admin/onedash/orders"],
+  });
+
+  const syncMutation = useMutation({
+    mutationFn: async () => {
+      const response = await fetch("/api/admin/sync-vps", {
+        method: "POST",
+        credentials: "include",
+      });
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || "Sync failed");
+      }
+      return response.json();
+    },
+    onSuccess: (data) => {
+      toast({
+        title: "Sync completed",
+        description: `Synced ${data.synced} orders, updated ${data.updated} VPS instances. Total in OneDash: ${data.totalOneDash}`,
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/stats"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/onedash/orders"] });
+    },
+    onError: (error: Error) => {
+      toast({
+        variant: "destructive",
+        title: "Sync failed",
+        description: error.message,
+      });
+    },
   });
 
   const formatDate = (dateString: string) => {
@@ -167,6 +223,92 @@ export default function AdminDashboard() {
           </CardContent>
         </Card>
       </div>
+
+      {/* OneDash VPS - Direct from API */}
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between gap-2">
+          <div>
+            <CardTitle className="flex items-center gap-2">
+              <CloudDownload className="h-5 w-5" />
+              OneDash VPS (Live)
+            </CardTitle>
+            <CardDescription>
+              Active VPS instances directly from OneDash API
+            </CardDescription>
+          </div>
+          <Button
+            variant="outline"
+            onClick={() => syncMutation.mutate()}
+            disabled={syncMutation.isPending}
+          >
+            {syncMutation.isPending ? (
+              <>
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                Syncing...
+              </>
+            ) : (
+              <>
+                <RefreshCw className="h-4 w-4 mr-2" />
+                Sync to Local
+              </>
+            )}
+          </Button>
+        </CardHeader>
+        <CardContent>
+          {onedashLoading ? (
+            <div className="space-y-3">
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="flex items-center gap-4 p-3 rounded-lg border">
+                  <Skeleton className="h-10 w-10 rounded-lg" />
+                  <div className="flex-1 space-y-1">
+                    <Skeleton className="h-4 w-32" />
+                    <Skeleton className="h-3 w-48" />
+                  </div>
+                  <Skeleton className="h-6 w-16" />
+                </div>
+              ))}
+            </div>
+          ) : onedashOrders && onedashOrders.length > 0 ? (
+            <div className="space-y-3">
+              {onedashOrders.map((order) => (
+                <div key={order.order_id} className="p-4 rounded-lg border space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
+                        <Server className="h-5 w-5 text-primary" />
+                      </div>
+                      <div>
+                        <div className="font-medium">{order.tariff.name}</div>
+                        <div className="text-xs text-muted-foreground">
+                          Order #{order.order_id} • {order.location.toUpperCase()} • 
+                          {order.finish_time?.days_remaining} days remaining
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  {order.vps_list && order.vps_list.length > 0 && (
+                    <div className="ml-13 grid gap-2">
+                      {order.vps_list.map((vps) => (
+                        <div key={vps.id} className="flex items-center justify-between p-2 rounded bg-muted/50">
+                          <div className="flex items-center gap-2">
+                            <span className="font-mono text-sm">{vps.vps_ip || "Provisioning..."}</span>
+                            <span className="text-xs text-muted-foreground">({vps.os})</span>
+                          </div>
+                          <StatusBadge status={vps.vps_status} />
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-8 text-muted-foreground">
+              No active VPS in OneDash
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Recent Orders */}
       <Card>

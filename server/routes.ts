@@ -2,9 +2,16 @@ import type { Express, Request, Response, NextFunction } from "express";
 import { type Server } from "http";
 import { storage } from "./storage";
 import { onedashService } from "./onedash";
+import { maxelpayService } from "./maxelpay";
 import { insertUserSchema, loginSchema, createVpsRequestSchema } from "@shared/schema";
 import bcrypt from "bcryptjs";
 import { randomBytes, createHash } from "crypto";
+import { z } from "zod";
+
+const createPaymentSchema = z.object({
+  amount: z.number().positive().min(1, "Amount must be at least 1"),
+  currency: z.string().default("USD"),
+});
 
 // Extend Express Request type
 declare global {
@@ -606,6 +613,183 @@ export async function registerRoutes(
         currency: null,
         lastChecked: new Date().toISOString(),
       });
+    }
+  });
+
+  // ============ ONEDASH VPS SYNC ============
+  app.get("/api/admin/onedash/orders", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const orders = await onedashService.getAllOrders();
+      res.json(orders);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message || "Failed to fetch OneDash orders" });
+    }
+  });
+
+  app.post("/api/admin/sync-vps", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const onedashOrders = await onedashService.getAllOrders();
+      let synced = 0;
+      let updated = 0;
+
+      for (const odOrder of onedashOrders) {
+        const existingOrder = await storage.getOrderByOnedashId(odOrder.order_id);
+
+        if (existingOrder) {
+          const finishDate = odOrder.finish_time?.epoch 
+            ? new Date(odOrder.finish_time.epoch * 1000)
+            : null;
+          
+          await storage.updateOrder(existingOrder.id, {
+            status: "active",
+            finishDate,
+          });
+
+          if (odOrder.vps_list) {
+            for (const vps of odOrder.vps_list) {
+              const existingVps = await storage.getVpsByOnedashId(vps.id);
+              
+              if (existingVps) {
+                await storage.updateVps(existingVps.id, {
+                  ipAddress: vps.vps_ip,
+                  status: vps.vps_status,
+                  os: vps.os,
+                });
+                updated++;
+              } else {
+                const localVpsList = await storage.getVpsByOrderId(existingOrder.id);
+                const unmatchedVps = localVpsList.find(v => !v.onedashVpsId);
+                if (unmatchedVps) {
+                  await storage.updateVps(unmatchedVps.id, {
+                    onedashVpsId: vps.id,
+                    ipAddress: vps.vps_ip,
+                    status: vps.vps_status,
+                    os: vps.os,
+                  });
+                  updated++;
+                }
+              }
+            }
+          }
+          synced++;
+        }
+      }
+
+      res.json({ 
+        success: true, 
+        synced,
+        updated,
+        totalOneDash: onedashOrders.length 
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message || "Failed to sync VPS data" });
+    }
+  });
+
+  // ============ PAYMENT ROUTES ============
+  app.post("/api/payments/create", requireAuth, async (req, res) => {
+    try {
+      const parsed = createPaymentSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: parsed.error.errors[0].message });
+      }
+      
+      const { amount, currency } = parsed.data;
+
+      const transaction = await storage.createTransaction({
+        userId: req.user.id,
+        type: "topup",
+        amount: amount.toString(),
+        currency,
+        status: "pending",
+        paymentMethod: "maxelpay",
+      });
+
+      const baseUrl = `${req.protocol}://${req.get("host")}`;
+      
+      const result = await maxelpayService.createPayment({
+        orderId: transaction.id,
+        amount,
+        currency,
+        userName: req.user.username,
+        userEmail: req.user.email,
+        baseUrl,
+      });
+
+      if (result.success && result.paymentUrl) {
+        await storage.updateTransaction(transaction.id, {
+          externalId: transaction.id,
+        });
+        res.json({ success: true, paymentUrl: result.paymentUrl, transactionId: transaction.id });
+      } else {
+        await storage.updateTransaction(transaction.id, { status: "failed" });
+        res.status(400).json({ message: result.error || "Failed to create payment" });
+      }
+    } catch (error: any) {
+      res.status(500).json({ message: error.message || "Payment creation failed" });
+    }
+  });
+
+  app.post("/api/payments/webhook", async (req, res) => {
+    try {
+      const signature = req.headers["x-signature"] as string;
+      const payload = JSON.stringify(req.body);
+
+      if (!maxelpayService.verifyWebhook(payload, signature || "")) {
+        return res.status(400).json({ message: "Invalid signature" });
+      }
+
+      const { orderID, status, amount } = req.body;
+      
+      const transaction = await storage.getTransactionById(orderID);
+      if (!transaction) {
+        return res.status(404).json({ message: "Transaction not found" });
+      }
+
+      if (status === "completed" || status === "success") {
+        await storage.updateTransaction(transaction.id, { status: "completed" });
+        await storage.addToUserBalance(transaction.userId, parseFloat(amount || transaction.amount?.toString() || "0"));
+      } else if (status === "failed" || status === "cancelled") {
+        await storage.updateTransaction(transaction.id, { status: status });
+      }
+
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message || "Webhook processing failed" });
+    }
+  });
+
+  app.get("/api/payments/transactions", requireAuth, async (req, res) => {
+    try {
+      const transactions = await storage.getTransactionsByUserId(req.user.id);
+      res.json(transactions);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message || "Failed to fetch transactions" });
+    }
+  });
+
+  // Admin: Manually add balance to user
+  app.post("/api/admin/users/:id/balance", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const { amount } = req.body;
+      if (!amount || isNaN(parseFloat(amount))) {
+        return res.status(400).json({ message: "Valid amount is required" });
+      }
+
+      await storage.addToUserBalance(req.params.id, parseFloat(amount));
+      
+      await storage.createTransaction({
+        userId: req.params.id,
+        type: "topup",
+        amount: amount.toString(),
+        currency: "USD",
+        status: "completed",
+        paymentMethod: "manual",
+      });
+
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message || "Failed to add balance" });
     }
   });
 

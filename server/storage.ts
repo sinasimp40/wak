@@ -7,6 +7,7 @@ import {
   vpsInstances, 
   pricingRules, 
   sessions,
+  transactions,
   type User, 
   type InsertUser,
   type Order,
@@ -15,6 +16,8 @@ import {
   type InsertVps,
   type PricingRule,
   type InsertPricingRule,
+  type Transaction,
+  type InsertTransaction,
 } from "@shared/schema";
 import { randomBytes } from "crypto";
 import bcrypt from "bcryptjs";
@@ -32,6 +35,7 @@ export interface IStorage {
   updateUserStatus(userId: string, status: string): Promise<void>;
   deleteUser(userId: string): Promise<void>;
   updateUserBalance(userId: string, balance: string): Promise<void>;
+  addToUserBalance(userId: string, amount: number): Promise<void>;
 
   // Sessions
   createSession(userId: string, hashedToken: string): Promise<void>;
@@ -41,6 +45,7 @@ export interface IStorage {
   // Orders
   createOrder(order: InsertOrder): Promise<Order>;
   getOrderById(id: string): Promise<Order | undefined>;
+  getOrderByOnedashId(onedashOrderId: number): Promise<Order | undefined>;
   getOrdersByUserId(userId: string): Promise<Order[]>;
   getAllOrders(): Promise<Order[]>;
   updateOrder(id: string, data: Partial<Order>): Promise<void>;
@@ -50,6 +55,7 @@ export interface IStorage {
   getVpsById(id: string): Promise<VpsInstance | undefined>;
   getVpsByUserId(userId: string): Promise<VpsInstance[]>;
   getVpsByOrderId(orderId: string): Promise<VpsInstance[]>;
+  getVpsByOnedashId(onedashVpsId: number): Promise<VpsInstance | undefined>;
   getAllVps(): Promise<VpsInstance[]>;
   updateVps(id: string, data: Partial<VpsInstance>): Promise<void>;
 
@@ -59,6 +65,13 @@ export interface IStorage {
   getPricingRule(tariffId: number, location: string): Promise<PricingRule | undefined>;
   updatePricingRule(id: string, data: Partial<PricingRule>): Promise<void>;
   deletePricingRule(id: string): Promise<void>;
+
+  // Transactions
+  createTransaction(transaction: InsertTransaction): Promise<Transaction>;
+  getTransactionById(id: string): Promise<Transaction | undefined>;
+  getTransactionByExternalId(externalId: string): Promise<Transaction | undefined>;
+  getTransactionsByUserId(userId: string): Promise<Transaction[]>;
+  updateTransaction(id: string, data: Partial<Transaction>): Promise<void>;
 
   // Stats
   getUserStats(userId: string): Promise<{
@@ -155,6 +168,11 @@ export class DatabaseStorage implements IStorage {
     return result[0];
   }
 
+  async getOrderByOnedashId(onedashOrderId: number): Promise<Order | undefined> {
+    const result = await db.select().from(orders).where(eq(orders.onedashOrderId, onedashOrderId)).limit(1);
+    return result[0];
+  }
+
   async getOrdersByUserId(userId: string): Promise<Order[]> {
     return db.select().from(orders).where(eq(orders.userId, userId)).orderBy(desc(orders.createdAt));
   }
@@ -184,6 +202,11 @@ export class DatabaseStorage implements IStorage {
 
   async getVpsByOrderId(orderId: string): Promise<VpsInstance[]> {
     return db.select().from(vpsInstances).where(eq(vpsInstances.orderId, orderId));
+  }
+
+  async getVpsByOnedashId(onedashVpsId: number): Promise<VpsInstance | undefined> {
+    const result = await db.select().from(vpsInstances).where(eq(vpsInstances.onedashVpsId, onedashVpsId)).limit(1);
+    return result[0];
   }
 
   async getAllVps(): Promise<VpsInstance[]> {
@@ -261,6 +284,39 @@ export class DatabaseStorage implements IStorage {
       totalVps: allVps.length,
       runningVps: allVps.filter(v => v.status === "runned").length,
     };
+  }
+
+  // Transactions
+  async createTransaction(transaction: InsertTransaction): Promise<Transaction> {
+    const result = await db.insert(transactions).values(transaction).returning();
+    return result[0];
+  }
+
+  async getTransactionById(id: string): Promise<Transaction | undefined> {
+    const result = await db.select().from(transactions).where(eq(transactions.id, id)).limit(1);
+    return result[0];
+  }
+
+  async getTransactionByExternalId(externalId: string): Promise<Transaction | undefined> {
+    const result = await db.select().from(transactions).where(eq(transactions.externalId, externalId)).limit(1);
+    return result[0];
+  }
+
+  async getTransactionsByUserId(userId: string): Promise<Transaction[]> {
+    return db.select().from(transactions).where(eq(transactions.userId, userId)).orderBy(desc(transactions.createdAt));
+  }
+
+  async updateTransaction(id: string, data: Partial<Transaction>): Promise<void> {
+    await db.update(transactions).set({ ...data, updatedAt: new Date() }).where(eq(transactions.id, id));
+  }
+
+  async addToUserBalance(userId: string, amount: number): Promise<void> {
+    const user = await this.getUser(userId);
+    if (user) {
+      const currentBalance = parseFloat(user.balance?.toString() || "0");
+      const newBalance = (currentBalance + amount).toFixed(2);
+      await this.updateUserBalance(userId, newBalance);
+    }
   }
 }
 

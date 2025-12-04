@@ -5,6 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatusBadge, LocationBadge } from "@/components/status-badge";
+import { AddBalanceDialog } from "@/components/add-balance-dialog";
 import { useAuth } from "@/lib/auth";
 
 interface DashboardStats {
@@ -69,9 +70,12 @@ export default function Dashboard() {
                 <div className="text-2xl font-bold font-mono" data-testid="text-balance">
                   ${stats?.balance?.toFixed(2) || "0.00"}
                 </div>
-                <p className="text-xs text-muted-foreground mt-1">
-                  Available for new orders
-                </p>
+                <div className="flex items-center justify-between mt-2">
+                  <p className="text-xs text-muted-foreground">
+                    Available for new orders
+                  </p>
+                  <AddBalanceDialog />
+                </div>
               </>
             )}
           </CardContent>

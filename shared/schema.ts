@@ -111,6 +111,30 @@ export const sessions = pgTable("sessions", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+// Transactions table for payment tracking
+export const transactions = pgTable("transactions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id),
+  type: text("type").notNull(), // "topup" | "purchase"
+  amount: decimal("amount", { precision: 10, scale: 2 }).notNull(),
+  currency: text("currency").notNull().default("USD"),
+  status: text("status").notNull().default("pending"), // "pending" | "completed" | "failed" | "cancelled"
+  paymentMethod: text("payment_method"), // "maxelpay" | "manual"
+  externalId: text("external_id"), // MaxelPay order ID
+  metadata: jsonb("metadata"), // Additional payment data
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertTransactionSchema = createInsertSchema(transactions).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertTransaction = z.infer<typeof insertTransactionSchema>;
+export type Transaction = typeof transactions.$inferSelect;
+
 // Create VPS request schema for API
 export const createVpsRequestSchema = z.object({
   tariffId: z.number().int().positive(),
