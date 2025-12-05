@@ -764,24 +764,51 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Invalid VPS ID" });
       }
       
-      const { username, password } = req.body;
+      const { password, ipAddress, os } = req.body;
       
-      if (username !== undefined && (typeof username !== "string" || username.length > 100)) {
-        return res.status(400).json({ message: "Invalid username format" });
-      }
       if (password !== undefined && (typeof password !== "string" || password.length > 200)) {
         return res.status(400).json({ message: "Invalid password format" });
       }
       
-      const vps = await storage.getVpsByOnedashId(vpsId);
+      let vps = await storage.getVpsByOnedashId(vpsId);
+      
+      // If VPS doesn't exist locally, create it as an imported VPS
       if (!vps) {
-        return res.status(404).json({ message: "VPS not found in local database. Please sync first." });
+        // Get first admin user to associate with imported VPS
+        const allUsers = await storage.getAllUsers();
+        const adminUser = allUsers.find(u => u.role === "admin");
+        
+        if (!adminUser) {
+          return res.status(400).json({ message: "No admin user found to associate VPS" });
+        }
+
+        // Create a placeholder order for imported VPS
+        const importedOrder = await storage.createOrder({
+          userId: adminUser.id,
+          tariffId: 0,
+          tariffName: "Imported from OneDash",
+          location: "unknown",
+          period: 30,
+          count: 1,
+          totalPrice: "0",
+        });
+
+        // Create the VPS record
+        vps = await storage.createVpsInstance({
+          orderId: importedOrder.id,
+          userId: adminUser.id,
+          onedashVpsId: vpsId,
+          os: os || "windows",
+          ipAddress: ipAddress || null,
+          status: "runned",
+          rdpUsername: "Administrator",
+          rdpPassword: password,
+        });
+
+        return res.json({ success: true, message: "VPS imported and credentials saved" });
       }
 
-      const updates: { rdpUsername?: string; rdpPassword?: string } = {};
-      if (username !== undefined) {
-        updates.rdpUsername = username.trim();
-      }
+      const updates: { rdpPassword?: string } = {};
       if (password !== undefined) {
         updates.rdpPassword = password;
       }

@@ -186,12 +186,13 @@ export default function AdminDashboard() {
   });
 
   const updateCredentialsMutation = useMutation({
-    mutationFn: async ({ vpsId, password }: { vpsId: number; password: string }) => {
-      return apiRequest("PATCH", `/api/admin/vps/${vpsId}/credentials`, { password });
+    mutationFn: async ({ vpsId, password, ipAddress }: { vpsId: number; password: string; ipAddress?: string }) => {
+      return apiRequest("PATCH", `/api/admin/vps/${vpsId}/credentials`, { password, ipAddress });
     },
     onSuccess: () => {
-      toast({ title: "Credentials Updated", description: "VPS credentials have been updated." });
+      toast({ title: "Credentials Updated", description: "VPS credentials have been saved." });
       setCredentialsDialog(prev => ({ ...prev, open: false, mode: "view" }));
+      refetchOrders();
     },
     onError: (error: Error) => {
       toast({ title: "Update Failed", description: error.message, variant: "destructive" });
@@ -804,6 +805,7 @@ export default function AdminDashboard() {
                       updateCredentialsMutation.mutate({
                         vpsId: credentialsDialog.vpsId,
                         password: credentialsDialog.password,
+                        ipAddress: credentialsDialog.vpsIp,
                       });
                     }
                   }}
