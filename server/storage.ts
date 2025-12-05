@@ -252,7 +252,11 @@ export class DatabaseStorage implements IStorage {
 
   // VPS Instances
   async createVpsInstance(vps: InsertVps): Promise<VpsInstance> {
-    const result = await db.insert(vpsInstances).values(vps).returning();
+    const encryptedVps = { ...vps };
+    if (vps.rdpPassword) {
+      encryptedVps.rdpPassword = encryptCredential(vps.rdpPassword);
+    }
+    const result = await db.insert(vpsInstances).values(encryptedVps).returning();
     return result[0];
   }
 

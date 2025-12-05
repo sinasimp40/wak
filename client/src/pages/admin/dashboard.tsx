@@ -186,8 +186,8 @@ export default function AdminDashboard() {
   });
 
   const updateCredentialsMutation = useMutation({
-    mutationFn: async ({ vpsId, username, password }: { vpsId: number; username: string; password: string }) => {
-      return apiRequest("PATCH", `/api/admin/vps/${vpsId}/credentials`, { username, password });
+    mutationFn: async ({ vpsId, password }: { vpsId: number; password: string }) => {
+      return apiRequest("PATCH", `/api/admin/vps/${vpsId}/credentials`, { password });
     },
     onSuccess: () => {
       toast({ title: "Credentials Updated", description: "VPS credentials have been updated." });
@@ -708,29 +708,21 @@ export default function AdminDashboard() {
               </div>
               <div className="space-y-2">
                 <Label>Username</Label>
-                {credentialsDialog.mode === "view" ? (
-                  <div className="flex items-center gap-2">
-                    <div className="flex-1 p-3 bg-muted rounded-lg font-mono text-sm">
-                      {credentialsDialog.username}
-                    </div>
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      onClick={() => {
-                        navigator.clipboard.writeText(credentialsDialog.username);
-                        toast({ title: "Copied!", description: "Username copied to clipboard." });
-                      }}
-                    >
-                      <Copy className="h-4 w-4" />
-                    </Button>
+                <div className="flex items-center gap-2">
+                  <div className="flex-1 p-3 bg-muted rounded-lg font-mono text-sm">
+                    {credentialsDialog.username}
                   </div>
-                ) : (
-                  <Input
-                    value={credentialsDialog.username}
-                    onChange={(e) => setCredentialsDialog(prev => ({ ...prev, username: e.target.value }))}
-                    placeholder="Username"
-                  />
-                )}
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={() => {
+                      navigator.clipboard.writeText(credentialsDialog.username);
+                      toast({ title: "Copied!", description: "Username copied to clipboard." });
+                    }}
+                  >
+                    <Copy className="h-4 w-4" />
+                  </Button>
+                </div>
               </div>
               <div className="space-y-2">
                 <Label>Password</Label>
@@ -767,7 +759,7 @@ export default function AdminDashboard() {
                       type={credentialsDialog.showPassword ? "text" : "password"}
                       value={credentialsDialog.password}
                       onChange={(e) => setCredentialsDialog(prev => ({ ...prev, password: e.target.value }))}
-                      placeholder="Password"
+                      placeholder="New password"
                       className="flex-1"
                     />
                     <Button
@@ -811,7 +803,6 @@ export default function AdminDashboard() {
                     if (credentialsDialog.vpsId) {
                       updateCredentialsMutation.mutate({
                         vpsId: credentialsDialog.vpsId,
-                        username: credentialsDialog.username,
                         password: credentialsDialog.password,
                       });
                     }
@@ -819,7 +810,7 @@ export default function AdminDashboard() {
                   disabled={updateCredentialsMutation.isPending}
                 >
                   {updateCredentialsMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-                  Save Changes
+                  Save Password
                 </Button>
               </>
             )}

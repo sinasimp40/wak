@@ -458,14 +458,45 @@ export async function registerRoutes(
           finishDate: new Date(Date.now() + period * 24 * 60 * 60 * 1000),
         });
 
-        // Create VPS instances in database
-        for (let i = 0; i < count; i++) {
-          await storage.createVpsInstance({
-            orderId: order.id,
-            userId: req.user.id,
-            os: system,
-            status: "not_runned",
-          });
+        // Fetch the order info from OneDash to get VPS details including password
+        try {
+          const orderInfo = await onedashService.getOrderInfo(result.order_id);
+          
+          if (orderInfo.vps_list && orderInfo.vps_list.length > 0) {
+            // Create VPS instances with data from OneDash
+            for (const vps of orderInfo.vps_list) {
+              await storage.createVpsInstance({
+                orderId: order.id,
+                userId: req.user.id,
+                onedashVpsId: vps.id,
+                os: vps.os || system,
+                ipAddress: vps.vps_ip,
+                status: vps.vps_status || "not_runned",
+                rdpUsername: vps.vps_login || "Administrator",
+                rdpPassword: vps.vps_password,
+              });
+            }
+          } else {
+            // Fallback: create placeholder VPS instances if OneDash doesn't return list immediately
+            for (let i = 0; i < count; i++) {
+              await storage.createVpsInstance({
+                orderId: order.id,
+                userId: req.user.id,
+                os: system,
+                status: "not_runned",
+              });
+            }
+          }
+        } catch (fetchError) {
+          // If fetching order info fails, create placeholder VPS instances
+          for (let i = 0; i < count; i++) {
+            await storage.createVpsInstance({
+              orderId: order.id,
+              userId: req.user.id,
+              os: system,
+              status: "not_runned",
+            });
+          }
         }
 
         res.json({ success: true, orderId: order.id });
@@ -1011,22 +1042,30 @@ export async function registerRoutes(
             for (const vps of odOrder.vps_list) {
               const existingVps = await storage.getVpsByOnedashId(vps.id);
               
+              const updateData: any = {
+                ipAddress: vps.vps_ip,
+                status: vps.vps_status,
+                os: vps.os,
+              };
+              
+              // Store password and username from OneDash if provided
+              if (vps.vps_password) {
+                updateData.rdpPassword = vps.vps_password;
+              }
+              if (vps.vps_login) {
+                updateData.rdpUsername = vps.vps_login;
+              }
+              
               if (existingVps) {
-                await storage.updateVps(existingVps.id, {
-                  ipAddress: vps.vps_ip,
-                  status: vps.vps_status,
-                  os: vps.os,
-                });
+                await storage.updateVps(existingVps.id, updateData);
                 updated++;
               } else {
                 const localVpsList = await storage.getVpsByOrderId(existingOrder.id);
                 const unmatchedVps = localVpsList.find(v => !v.onedashVpsId);
                 if (unmatchedVps) {
                   await storage.updateVps(unmatchedVps.id, {
+                    ...updateData,
                     onedashVpsId: vps.id,
-                    ipAddress: vps.vps_ip,
-                    status: vps.vps_status,
-                    os: vps.os,
                   });
                   updated++;
                 }

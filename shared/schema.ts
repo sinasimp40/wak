@@ -197,6 +197,8 @@ export interface OneDashOrder {
     os: string;
     vps_ip: string;
     vps_status: "runned" | "not_runned" | "cloning";
+    vps_password?: string;
+    vps_login?: string;
   }>;
   finish_time: {
     epoch: number;
