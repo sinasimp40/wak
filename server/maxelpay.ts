@@ -130,10 +130,11 @@ class MaxelPayService {
         };
       }
 
-      if (data.url || data.payment_url || data.checkout_url || data.data?.url || data.data?.payment_url) {
+      const paymentUrl = data.result || data.url || data.payment_url || data.checkout_url || data.paymentUrl || data.data?.url || data.data?.payment_url || data.data?.result;
+      if (paymentUrl) {
         return {
           success: true,
-          paymentUrl: data.url || data.payment_url || data.checkout_url || data.data?.url || data.data?.payment_url,
+          paymentUrl: paymentUrl,
         };
       }
 
