@@ -757,6 +757,105 @@ export async function registerRoutes(
     }
   });
 
+  // Fetch credentials directly from OneDash API and sync to local database
+  app.post("/api/admin/vps/:vpsId/fetch-onedash-credentials", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const vpsId = parseInt(req.params.vpsId);
+      if (isNaN(vpsId)) {
+        return res.status(400).json({ message: "Invalid VPS ID" });
+      }
+
+      // Get all orders from OneDash to find the VPS
+      const onedashOrders = await onedashService.getAllOrders();
+      let foundVps: any = null;
+      let foundOrder: any = null;
+
+      for (const order of onedashOrders) {
+        if (order.vps_list) {
+          const vps = order.vps_list.find(v => v.id === vpsId);
+          if (vps) {
+            foundVps = vps;
+            foundOrder = order;
+            break;
+          }
+        }
+      }
+
+      if (!foundVps) {
+        return res.status(404).json({ message: "VPS not found in OneDash API" });
+      }
+
+      // Get or create local VPS record
+      let localVps = await storage.getVpsByOnedashId(vpsId);
+      
+      const updateData: any = {
+        ipAddress: foundVps.vps_ip,
+        status: foundVps.vps_status,
+        os: foundVps.os,
+      };
+
+      // Extract credentials from OneDash response
+      if (foundVps.vps_password) {
+        updateData.rdpPassword = foundVps.vps_password;
+      }
+      if (foundVps.vps_login) {
+        updateData.rdpUsername = foundVps.vps_login;
+      }
+
+      if (localVps) {
+        // Update existing VPS
+        await storage.updateVps(localVps.id, updateData);
+      } else {
+        // Create new VPS record - need to find or create an order first
+        const allUsers = await storage.getAllUsers();
+        const adminUser = allUsers.find(u => u.role === "admin");
+        
+        if (adminUser) {
+          // Check if order exists locally
+          let localOrder = await storage.getOrderByOnedashId(foundOrder.order_id);
+          
+          if (!localOrder) {
+            // Create a placeholder order
+            localOrder = await storage.createOrder({
+              userId: adminUser.id,
+              tariffId: foundOrder.tariff?.id || 0,
+              tariffName: foundOrder.tariff?.name || "Imported from OneDash",
+              location: foundOrder.location || "unknown",
+              period: 30,
+              count: 1,
+              totalPrice: "0",
+            });
+            await storage.updateOrder(localOrder.id, { onedashOrderId: foundOrder.order_id });
+          }
+
+          // Create VPS record
+          localVps = await storage.createVpsInstance({
+            orderId: localOrder.id,
+            userId: adminUser.id,
+            onedashVpsId: vpsId,
+            os: foundVps.os || "windows",
+            ipAddress: foundVps.vps_ip || null,
+            status: foundVps.vps_status || "not_runned",
+            rdpUsername: foundVps.vps_login || "Administrator",
+            rdpPassword: foundVps.vps_password || null,
+          });
+        }
+      }
+
+      res.json({
+        success: true,
+        username: foundVps.vps_login || "Administrator",
+        password: foundVps.vps_password || null,
+        ipAddress: foundVps.vps_ip,
+        message: foundVps.vps_password 
+          ? "Credentials fetched and synced from OneDash" 
+          : "OneDash API did not return password. Password may only be available immediately after VPS creation or via reinstall.",
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message || "Failed to fetch credentials from OneDash" });
+    }
+  });
+
   app.patch("/api/admin/vps/:vpsId/credentials", requireAuth, requireAdmin, async (req, res) => {
     try {
       const vpsId = parseInt(req.params.vpsId);

@@ -14,6 +14,7 @@ import {
   EyeOff,
   Key,
   Edit,
+  AlertTriangle,
 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -451,22 +452,28 @@ export default function VpsList() {
                   )}
                 </div>
               ) : (
-                <div className="flex items-center gap-2">
-                  <Input
-                    type={credentialsDialog.showPassword ? "text" : "password"}
-                    value={credentialsDialog.password}
-                    onChange={(e) => setCredentialsDialog(prev => ({ ...prev, password: e.target.value }))}
-                    placeholder="New password"
-                    className="flex-1"
-                  />
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    onClick={() => setCredentialsDialog(prev => ({ ...prev, showPassword: !prev.showPassword }))}
-                  >
-                    {credentialsDialog.showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                  </Button>
-                </div>
+                <>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      type={credentialsDialog.showPassword ? "text" : "password"}
+                      value={credentialsDialog.password}
+                      onChange={(e) => setCredentialsDialog(prev => ({ ...prev, password: e.target.value }))}
+                      placeholder="New password"
+                      className="flex-1"
+                    />
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      onClick={() => setCredentialsDialog(prev => ({ ...prev, showPassword: !prev.showPassword }))}
+                    >
+                      {credentialsDialog.showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </Button>
+                  </div>
+                  <div className="flex items-center gap-2 p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-lg text-sm text-yellow-600 dark:text-yellow-400">
+                    <AlertTriangle className="h-4 w-4 shrink-0" />
+                    <span>This saves the password for display only. Contact support to change the actual RDP password.</span>
+                  </div>
+                </>
               )}
             </div>
           </div>

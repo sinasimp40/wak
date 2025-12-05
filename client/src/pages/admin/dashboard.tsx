@@ -18,6 +18,8 @@ import {
   EyeOff,
   Copy,
   Edit,
+  AlertTriangle,
+  Download,
 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -190,12 +192,42 @@ export default function AdminDashboard() {
       return apiRequest("PATCH", `/api/admin/vps/${vpsId}/credentials`, { password, ipAddress });
     },
     onSuccess: () => {
-      toast({ title: "Credentials Updated", description: "VPS credentials have been saved." });
+      toast({ title: "Credentials Updated", description: "VPS credentials have been saved locally. Note: This does not change the password on OneDash servers." });
       setCredentialsDialog(prev => ({ ...prev, open: false, mode: "view" }));
       refetchOrders();
     },
     onError: (error: Error) => {
       toast({ title: "Update Failed", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const fetchOneDashCredentialsMutation = useMutation({
+    mutationFn: async (vpsId: number) => {
+      const response = await fetch(`/api/admin/vps/${vpsId}/fetch-onedash-credentials`, { 
+        method: "POST",
+        credentials: "include" 
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.message || "Failed to fetch from OneDash");
+      }
+      return data;
+    },
+    onSuccess: (data) => {
+      setCredentialsDialog(prev => ({
+        ...prev,
+        username: data.username || "Administrator",
+        password: data.password || "",
+        loading: false,
+      }));
+      toast({ 
+        title: data.password ? "Credentials Synced" : "No Password Found",
+        description: data.message,
+        variant: data.password ? "default" : "destructive"
+      });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Fetch Failed", description: error.message, variant: "destructive" });
     },
   });
 
@@ -755,38 +787,69 @@ export default function AdminDashboard() {
                     )}
                   </div>
                 ) : (
-                  <div className="flex items-center gap-2">
-                    <Input
-                      type={credentialsDialog.showPassword ? "text" : "password"}
-                      value={credentialsDialog.password}
-                      onChange={(e) => setCredentialsDialog(prev => ({ ...prev, password: e.target.value }))}
-                      placeholder="New password"
-                      className="flex-1"
-                    />
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      onClick={() => setCredentialsDialog(prev => ({ ...prev, showPassword: !prev.showPassword }))}
-                    >
-                      {credentialsDialog.showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                    </Button>
-                  </div>
+                  <>
+                    <div className="flex items-center gap-2">
+                      <Input
+                        type={credentialsDialog.showPassword ? "text" : "password"}
+                        value={credentialsDialog.password}
+                        onChange={(e) => setCredentialsDialog(prev => ({ ...prev, password: e.target.value }))}
+                        placeholder="New password"
+                        className="flex-1"
+                      />
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        onClick={() => setCredentialsDialog(prev => ({ ...prev, showPassword: !prev.showPassword }))}
+                      >
+                        {credentialsDialog.showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </Button>
+                    </div>
+                    <div className="flex items-center gap-2 p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-lg text-sm text-yellow-600 dark:text-yellow-400">
+                      <AlertTriangle className="h-4 w-4 shrink-0" />
+                      <span>Password changes are saved locally only. OneDash API does not support remote password changes.</span>
+                    </div>
+                  </>
                 )}
               </div>
+              {credentialsDialog.mode === "view" && !credentialsDialog.password && (
+                <div className="flex items-center gap-2 p-3 bg-blue-500/10 border border-blue-500/30 rounded-lg text-sm text-blue-600 dark:text-blue-400">
+                  <Download className="h-4 w-4 shrink-0" />
+                  <span>No password stored locally. Try fetching from OneDash API below.</span>
+                </div>
+              )}
             </div>
           )}
-          <DialogFooter>
+          <DialogFooter className="flex-col gap-2 sm:flex-row">
             {credentialsDialog.mode === "view" ? (
               <>
                 <Button
                   variant="outline"
+                  onClick={() => {
+                    if (credentialsDialog.vpsId) {
+                      fetchOneDashCredentialsMutation.mutate(credentialsDialog.vpsId);
+                    }
+                  }}
+                  disabled={fetchOneDashCredentialsMutation.isPending}
+                  className="w-full sm:w-auto"
+                >
+                  {fetchOneDashCredentialsMutation.isPending ? (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <Download className="h-4 w-4 mr-2" />
+                  )}
+                  Fetch from OneDash
+                </Button>
+                <Button
+                  variant="outline"
                   onClick={() => setCredentialsDialog(prev => ({ ...prev, mode: "edit" }))}
+                  className="w-full sm:w-auto"
                 >
                   <Edit className="h-4 w-4 mr-2" />
                   Edit
                 </Button>
                 <Button
                   onClick={() => setCredentialsDialog({ open: false, vpsId: null, vpsIp: "", username: "", password: "", showPassword: false, mode: "view", loading: false })}
+                  className="w-full sm:w-auto"
                 >
                   Close
                 </Button>

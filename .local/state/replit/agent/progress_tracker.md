@@ -22,3 +22,6 @@
 [x] 22. Added real-time OneDash balance with auto-refresh every 30 seconds and dedicated refresh button
 [x] 23. Created new accounts: admin@panel.com / admin123 (with $2.00 balance), user@panel.com / user123 (with $0 balance)
 [x] 24. Re-provisioned database and created fresh accounts: admin@rdppanel.com / admin123 ($2.00 balance), user@rdppanel.com / user123 ($0 balance)
+[x] 25. Added "Fetch from OneDash" button to sync VPS credentials directly from OneDash API
+[x] 26. Added warning that password changes in panel are LOCAL ONLY (OneDash API has no password change endpoint)
+[x] 27. Fixed credentials dialog to show prompt when no password is stored and fetch from OneDash is available
