@@ -1033,6 +1033,20 @@ export async function registerRoutes(
     }
   });
 
+  // Debug endpoint to try getting VPS credentials from OneDash
+  app.get("/api/admin/onedash/vps-credentials/:vpsId", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const vpsId = parseInt(req.params.vpsId);
+      if (isNaN(vpsId)) {
+        return res.status(400).json({ message: "Invalid VPS ID" });
+      }
+      const results = await onedashService.getVpsCredentials(vpsId);
+      res.json(results);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message || "Failed to fetch VPS credentials" });
+    }
+  });
+
   app.post("/api/admin/sync-vps", requireAuth, requireAdmin, async (req, res) => {
     try {
       const onedashOrders = await onedashService.getAllOrders();

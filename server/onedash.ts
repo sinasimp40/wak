@@ -88,6 +88,38 @@ class OneDashService {
     return response.json();
   }
 
+  // Try to get VPS credentials from OneDash
+  async getVpsCredentials(vpsId: number): Promise<any> {
+    const apiKey = await this.getApiKey();
+    
+    // Try different possible endpoints
+    const endpoints = [
+      { url: "/vps-info", body: { vps_id: vpsId } },
+      { url: "/vps-credentials", body: { vps_id: vpsId } },
+      { url: "/get-password", body: { vps_id: vpsId } },
+    ];
+    
+    const results: any = {};
+    
+    for (const endpoint of endpoints) {
+      try {
+        const response = await fetch(`${ONEDASH_API_URL}${endpoint.url}`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Api-Key": apiKey,
+          },
+          body: JSON.stringify(endpoint.body),
+        });
+        results[endpoint.url] = await response.json();
+      } catch (error: any) {
+        results[endpoint.url] = { error: error.message };
+      }
+    }
+    
+    return results;
+  }
+
   async createVps(params: {
     period: number;
     tariff_id: number;
