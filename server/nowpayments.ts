@@ -136,10 +136,58 @@ class NowPaymentsService {
     }
   }
 
+  async getAvailableCurrencies(): Promise<string[]> {
+    try {
+      const apiKey = await this.getApiKey();
+      const apiUrl = await this.getApiUrl();
+
+      const response = await fetch(`${apiUrl}/currencies`, {
+        method: "GET",
+        headers: {
+          "x-api-key": apiKey,
+        },
+      });
+
+      if (!response.ok) {
+        return ["btc", "eth", "ltc", "usdt", "trx"];
+      }
+
+      const data = await response.json();
+      return data.currencies || ["btc", "eth", "ltc", "usdt", "trx"];
+    } catch (error) {
+      console.error("Error fetching currencies:", error);
+      return ["btc", "eth", "ltc", "usdt", "trx"];
+    }
+  }
+
+  async getMinimumPaymentAmount(payCurrency: string, priceCurrency: string = "usd"): Promise<number> {
+    try {
+      const apiKey = await this.getApiKey();
+      const apiUrl = await this.getApiUrl();
+
+      const response = await fetch(`${apiUrl}/min-amount?currency_from=${payCurrency}&currency_to=${priceCurrency}`, {
+        method: "GET",
+        headers: {
+          "x-api-key": apiKey,
+        },
+      });
+
+      if (!response.ok) {
+        return 0;
+      }
+
+      const data = await response.json();
+      return data.min_amount || 0;
+    } catch (error) {
+      return 0;
+    }
+  }
+
   async createDirectPayment(params: {
     orderId: string;
     amount: number;
     currency: string;
+    payCurrency: string;
     baseUrl: string;
   }): Promise<DirectPaymentResponse> {
     const apiKey = await this.getApiKey();
@@ -155,7 +203,7 @@ class NowPaymentsService {
         body: JSON.stringify({
           price_amount: params.amount,
           price_currency: params.currency.toLowerCase(),
-          pay_currency: "btc",
+          pay_currency: params.payCurrency.toLowerCase(),
           order_id: params.orderId,
           order_description: `Balance top-up - $${params.amount}`,
           ipn_callback_url: `${params.baseUrl}/api/payments/webhook`,
@@ -185,7 +233,7 @@ class NowPaymentsService {
       }
 
       if (data.pay_address) {
-        const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=bitcoin:${data.pay_address}?amount=${data.pay_amount}`;
+        const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(data.pay_address)}`;
         
         return {
           success: true,

@@ -940,6 +940,15 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/payments/currencies", requireAuth, async (req, res) => {
+    try {
+      const currencies = await nowpaymentsService.getAvailableCurrencies();
+      res.json({ currencies });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message || "Failed to fetch currencies" });
+    }
+  });
+
   app.post("/api/payments/create-direct", requireAuth, async (req, res) => {
     try {
       const parsed = createPaymentSchema.safeParse(req.body);
@@ -948,6 +957,7 @@ export async function registerRoutes(
       }
 
       const { amount, currency } = parsed.data;
+      const payCurrency = req.body.payCurrency || "btc";
 
       const transaction = await storage.createTransaction({
         userId: req.user.id,
@@ -964,6 +974,7 @@ export async function registerRoutes(
         orderId: transaction.id,
         amount,
         currency,
+        payCurrency,
         baseUrl,
       });
 
