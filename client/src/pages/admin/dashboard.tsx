@@ -37,11 +37,11 @@ interface AdminStats {
 interface OneDashOrder {
   order_id: number;
   tariff: { id: number; name: string };
-  location: string;
+  location: string | null;
   vps_list: Array<{
     id: number;
     os: string;
-    vps_ip: string;
+    vps_ip: { ip: string; ssh_port: number } | string | null;
     vps_status: "runned" | "not_runned" | "cloning";
   }>;
   finish_time: {
@@ -280,7 +280,7 @@ export default function AdminDashboard() {
                       <div>
                         <div className="font-medium">{order.tariff.name}</div>
                         <div className="text-xs text-muted-foreground">
-                          Order #{order.order_id} • {order.location.toUpperCase()} • 
+                          Order #{order.order_id} • {order.location?.toUpperCase() || "N/A"} • 
                           {order.finish_time?.days_remaining} days remaining
                         </div>
                       </div>
@@ -288,15 +288,20 @@ export default function AdminDashboard() {
                   </div>
                   {order.vps_list && order.vps_list.length > 0 && (
                     <div className="ml-13 grid gap-2">
-                      {order.vps_list.map((vps) => (
-                        <div key={vps.id} className="flex items-center justify-between p-2 rounded bg-muted/50">
-                          <div className="flex items-center gap-2">
-                            <span className="font-mono text-sm">{vps.vps_ip || "Provisioning..."}</span>
-                            <span className="text-xs text-muted-foreground">({vps.os})</span>
+                      {order.vps_list.map((vps) => {
+                        const ipDisplay = vps.vps_ip 
+                          ? (typeof vps.vps_ip === 'object' ? vps.vps_ip.ip : vps.vps_ip)
+                          : "Provisioning...";
+                        return (
+                          <div key={vps.id} className="flex items-center justify-between p-2 rounded bg-muted/50">
+                            <div className="flex items-center gap-2">
+                              <span className="font-mono text-sm">{ipDisplay}</span>
+                              <span className="text-xs text-muted-foreground">({vps.os})</span>
+                            </div>
+                            <StatusBadge status={vps.vps_status} />
                           </div>
-                          <StatusBadge status={vps.vps_status} />
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
                 </div>
