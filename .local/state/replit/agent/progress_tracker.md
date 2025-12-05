@@ -10,3 +10,10 @@
 [x] 10. Added HMAC-SHA512 webhook signature verification for NOWPayments payment confirmations
 [x] 11. Added Check Payment Status feature in admin panel to sync pending payments from NOWPayments
 [x] 12. Created new admin and user accounts (admin@vps.com / admin123, user@vps.com / user123)
+[x] 13. Payment timer displays hours:minutes:seconds format for payment windows (uses actual NOWPayments expiration)
+[x] 14. Added billing/transactions tab showing complete payment history for users
+[x] 15. Admin can change user passwords with secure bcrypt hashing
+[x] 16. Removed registration IP column from admin users table (login history still available via separate dialog)
+[x] 17. Added VPS credentials (rdpUsername, rdpPassword) to schema with AES-256-GCM encryption at rest
+[x] 18. VPS credentials viewable and editable in VPS list page
+[x] 19. VPS credentials viewable and editable in orders page

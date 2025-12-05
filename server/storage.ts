@@ -25,6 +25,7 @@ import {
 } from "@shared/schema";
 import { randomBytes } from "crypto";
 import bcrypt from "bcryptjs";
+import { encryptCredential, decryptCredential } from "./encryption";
 
 const pool = new pg.Pool({
   connectionString: process.env.DATABASE_URL,
@@ -257,28 +258,42 @@ export class DatabaseStorage implements IStorage {
 
   async getVpsById(id: string): Promise<VpsInstance | undefined> {
     const result = await db.select().from(vpsInstances).where(eq(vpsInstances.id, id)).limit(1);
-    return result[0];
+    return result[0] ? this.decryptVpsCredentials(result[0]) : undefined;
   }
 
   async getVpsByUserId(userId: string): Promise<VpsInstance[]> {
-    return db.select().from(vpsInstances).where(eq(vpsInstances.userId, userId)).orderBy(desc(vpsInstances.createdAt));
+    const result = await db.select().from(vpsInstances).where(eq(vpsInstances.userId, userId)).orderBy(desc(vpsInstances.createdAt));
+    return result.map(vps => this.decryptVpsCredentials(vps));
   }
 
   async getVpsByOrderId(orderId: string): Promise<VpsInstance[]> {
-    return db.select().from(vpsInstances).where(eq(vpsInstances.orderId, orderId));
+    const result = await db.select().from(vpsInstances).where(eq(vpsInstances.orderId, orderId));
+    return result.map(vps => this.decryptVpsCredentials(vps));
   }
 
   async getVpsByOnedashId(onedashVpsId: number): Promise<VpsInstance | undefined> {
     const result = await db.select().from(vpsInstances).where(eq(vpsInstances.onedashVpsId, onedashVpsId)).limit(1);
-    return result[0];
+    return result[0] ? this.decryptVpsCredentials(result[0]) : undefined;
   }
 
   async getAllVps(): Promise<VpsInstance[]> {
-    return db.select().from(vpsInstances).orderBy(desc(vpsInstances.createdAt));
+    const result = await db.select().from(vpsInstances).orderBy(desc(vpsInstances.createdAt));
+    return result.map(vps => this.decryptVpsCredentials(vps));
   }
 
   async updateVps(id: string, data: Partial<VpsInstance>): Promise<void> {
-    await db.update(vpsInstances).set(data).where(eq(vpsInstances.id, id));
+    const encryptedData = { ...data };
+    if (data.rdpPassword) {
+      encryptedData.rdpPassword = encryptCredential(data.rdpPassword);
+    }
+    await db.update(vpsInstances).set(encryptedData).where(eq(vpsInstances.id, id));
+  }
+
+  private decryptVpsCredentials(vps: VpsInstance): VpsInstance {
+    return {
+      ...vps,
+      rdpPassword: vps.rdpPassword ? decryptCredential(vps.rdpPassword) : vps.rdpPassword,
+    };
   }
 
   // Pricing Rules

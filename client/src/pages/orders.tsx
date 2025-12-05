@@ -10,6 +10,13 @@ import {
   ChevronUp,
   Server,
   Loader2,
+  Eye,
+  EyeOff,
+  Edit3,
+  Check,
+  X,
+  User,
+  Key,
 } from "lucide-react";
 import { Link } from "wouter";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -38,6 +45,8 @@ interface OrderVps {
   ipAddress: string | null;
   status: "runned" | "not_runned" | "cloning";
   os: string;
+  rdpUsername: string | null;
+  rdpPassword: string | null;
 }
 
 interface Order {
@@ -63,6 +72,12 @@ export default function Orders() {
     orderId: null,
   });
   const [extendPeriod, setExtendPeriod] = useState("30");
+  const [visiblePasswords, setVisiblePasswords] = useState<Set<string>>(new Set());
+  const [editingCredentials, setEditingCredentials] = useState<{
+    vpsId: string;
+    field: "username" | "password";
+    value: string;
+  } | null>(null);
 
   const { data: orders, isLoading, refetch, isRefetching } = useQuery<Order[]>({
     queryKey: ["/api/orders"],
@@ -81,6 +96,30 @@ export default function Orders() {
       toast({ title: "Extension failed", description: error.message, variant: "destructive" });
     },
   });
+
+  const updateCredentialsMutation = useMutation({
+    mutationFn: async ({ vpsId, username, password }: { vpsId: string; username?: string; password?: string }) => {
+      return apiRequest("PATCH", `/api/vps/${vpsId}/credentials`, { rdpUsername: username, rdpPassword: password });
+    },
+    onSuccess: () => {
+      toast({ title: "Credentials updated", description: "VPS credentials have been updated." });
+      setEditingCredentials(null);
+      queryClient.invalidateQueries({ queryKey: ["/api/orders"] });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Update failed", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const togglePasswordVisibility = (vpsId: string) => {
+    const newVisible = new Set(visiblePasswords);
+    if (newVisible.has(vpsId)) {
+      newVisible.delete(vpsId);
+    } else {
+      newVisible.add(vpsId);
+    }
+    setVisiblePasswords(newVisible);
+  };
 
   const toggleExpanded = (orderId: string) => {
     const newExpanded = new Set(expandedOrders);
@@ -241,16 +280,131 @@ export default function Orders() {
                             {order.vpsList.map((vps) => (
                               <div
                                 key={vps.id}
-                                className="flex items-center gap-3 p-3 rounded-lg bg-muted/50"
+                                className="p-3 rounded-lg bg-muted/50 space-y-2"
                               >
-                                <Server className="h-4 w-4 text-muted-foreground" />
-                                <span className="font-mono text-sm">
-                                  {vps.ipAddress || "Provisioning..."}
-                                </span>
-                                <span className="text-sm text-muted-foreground">
-                                  {getOsDisplayName(vps.os)}
-                                </span>
-                                <StatusBadge status={vps.status} />
+                                <div className="flex items-center gap-3">
+                                  <Server className="h-4 w-4 text-muted-foreground" />
+                                  <span className="font-mono text-sm">
+                                    {vps.ipAddress || "Provisioning..."}
+                                  </span>
+                                  <span className="text-sm text-muted-foreground">
+                                    {getOsDisplayName(vps.os)}
+                                  </span>
+                                  <StatusBadge status={vps.status} />
+                                </div>
+                                <div className="flex flex-wrap gap-4 text-sm pl-7">
+                                  <div className="flex items-center gap-2">
+                                    <User className="h-3 w-3 text-muted-foreground" />
+                                    <span className="text-muted-foreground">Username:</span>
+                                    {editingCredentials?.vpsId === vps.id && editingCredentials.field === "username" ? (
+                                      <div className="flex items-center gap-1">
+                                        <Input
+                                          className="h-6 w-32 text-xs"
+                                          value={editingCredentials.value}
+                                          onChange={(e) => setEditingCredentials({ ...editingCredentials, value: e.target.value })}
+                                          autoFocus
+                                        />
+                                        <Button
+                                          variant="ghost"
+                                          size="icon"
+                                          className="h-6 w-6"
+                                          onClick={() => {
+                                            updateCredentialsMutation.mutate({ vpsId: vps.id, username: editingCredentials.value });
+                                          }}
+                                          disabled={updateCredentialsMutation.isPending}
+                                        >
+                                          <Check className="h-3 w-3" />
+                                        </Button>
+                                        <Button
+                                          variant="ghost"
+                                          size="icon"
+                                          className="h-6 w-6"
+                                          onClick={() => setEditingCredentials(null)}
+                                        >
+                                          <X className="h-3 w-3" />
+                                        </Button>
+                                      </div>
+                                    ) : (
+                                      <div className="flex items-center gap-1">
+                                        <code className="text-xs bg-background px-1.5 py-0.5 rounded">
+                                          {vps.rdpUsername || "Not set"}
+                                        </code>
+                                        <Button
+                                          variant="ghost"
+                                          size="icon"
+                                          className="h-6 w-6"
+                                          onClick={() => setEditingCredentials({ vpsId: vps.id, field: "username", value: vps.rdpUsername || "" })}
+                                        >
+                                          <Edit3 className="h-3 w-3" />
+                                        </Button>
+                                      </div>
+                                    )}
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    <Key className="h-3 w-3 text-muted-foreground" />
+                                    <span className="text-muted-foreground">Password:</span>
+                                    {editingCredentials?.vpsId === vps.id && editingCredentials.field === "password" ? (
+                                      <div className="flex items-center gap-1">
+                                        <Input
+                                          className="h-6 w-32 text-xs"
+                                          type="text"
+                                          value={editingCredentials.value}
+                                          onChange={(e) => setEditingCredentials({ ...editingCredentials, value: e.target.value })}
+                                          autoFocus
+                                        />
+                                        <Button
+                                          variant="ghost"
+                                          size="icon"
+                                          className="h-6 w-6"
+                                          onClick={() => {
+                                            updateCredentialsMutation.mutate({ vpsId: vps.id, password: editingCredentials.value });
+                                          }}
+                                          disabled={updateCredentialsMutation.isPending}
+                                        >
+                                          <Check className="h-3 w-3" />
+                                        </Button>
+                                        <Button
+                                          variant="ghost"
+                                          size="icon"
+                                          className="h-6 w-6"
+                                          onClick={() => setEditingCredentials(null)}
+                                        >
+                                          <X className="h-3 w-3" />
+                                        </Button>
+                                      </div>
+                                    ) : (
+                                      <div className="flex items-center gap-1">
+                                        <code className="text-xs bg-background px-1.5 py-0.5 rounded">
+                                          {vps.rdpPassword 
+                                            ? (visiblePasswords.has(vps.id) ? vps.rdpPassword : "••••••••")
+                                            : "Not set"}
+                                        </code>
+                                        {vps.rdpPassword && (
+                                          <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            className="h-6 w-6"
+                                            onClick={() => togglePasswordVisibility(vps.id)}
+                                          >
+                                            {visiblePasswords.has(vps.id) ? (
+                                              <EyeOff className="h-3 w-3" />
+                                            ) : (
+                                              <Eye className="h-3 w-3" />
+                                            )}
+                                          </Button>
+                                        )}
+                                        <Button
+                                          variant="ghost"
+                                          size="icon"
+                                          className="h-6 w-6"
+                                          onClick={() => setEditingCredentials({ vpsId: vps.id, field: "password", value: vps.rdpPassword || "" })}
+                                        >
+                                          <Edit3 className="h-3 w-3" />
+                                        </Button>
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
                               </div>
                             ))}
                           </div>
