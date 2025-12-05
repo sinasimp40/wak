@@ -14,6 +14,18 @@ interface PaymentResponse {
   error?: string;
 }
 
+interface DirectPaymentResponse {
+  success: boolean;
+  paymentId?: string;
+  payAddress?: string;
+  payAmount?: string;
+  payCurrency?: string;
+  expiresAt?: string;
+  qrCodeUrl?: string;
+  status?: string;
+  error?: string;
+}
+
 interface NowPaymentsCreateResponse {
   payment_id: string;
   payment_status: string;
@@ -121,6 +133,111 @@ class NowPaymentsService {
         success: false,
         error: error.message || "Payment service unavailable",
       };
+    }
+  }
+
+  async createDirectPayment(params: {
+    orderId: string;
+    amount: number;
+    currency: string;
+    baseUrl: string;
+  }): Promise<DirectPaymentResponse> {
+    const apiKey = await this.getApiKey();
+    const apiUrl = await this.getApiUrl();
+
+    try {
+      const response = await fetch(`${apiUrl}/payment`, {
+        method: "POST",
+        headers: {
+          "x-api-key": apiKey,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          price_amount: params.amount,
+          price_currency: params.currency.toLowerCase(),
+          pay_currency: "btc",
+          order_id: params.orderId,
+          order_description: `Balance top-up - $${params.amount}`,
+          ipn_callback_url: `${params.baseUrl}/api/payments/webhook`,
+        }),
+      });
+
+      const contentType = response.headers.get("content-type") || "";
+      
+      if (!contentType.includes("application/json")) {
+        const text = await response.text();
+        console.error("NOWPayments returned non-JSON response:", text.substring(0, 500));
+        return {
+          success: false,
+          error: `Payment provider returned an error (status ${response.status}). Please check API credentials.`,
+        };
+      }
+
+      const data = await response.json();
+      console.log("NOWPayments direct payment response:", JSON.stringify(data, null, 2));
+
+      if (!response.ok) {
+        console.error("NOWPayments error response:", data);
+        return {
+          success: false,
+          error: data.message || data.error || `Payment provider error (status ${response.status})`,
+        };
+      }
+
+      if (data.pay_address) {
+        const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=bitcoin:${data.pay_address}?amount=${data.pay_amount}`;
+        
+        return {
+          success: true,
+          paymentId: data.payment_id,
+          payAddress: data.pay_address,
+          payAmount: String(data.pay_amount),
+          payCurrency: data.pay_currency,
+          expiresAt: data.expiration_estimate_date,
+          qrCodeUrl,
+          status: data.payment_status,
+        };
+      }
+
+      return {
+        success: false,
+        error: data.message || data.error || "Failed to create payment - no payment address returned",
+      };
+    } catch (error: any) {
+      console.error("NOWPayments direct payment error:", error);
+      return {
+        success: false,
+        error: error.message || "Payment service unavailable",
+      };
+    }
+  }
+
+  async getPaymentStatusFull(paymentId: string): Promise<{ status: string; payAddress?: string; payAmount?: string; payCurrency?: string } | null> {
+    try {
+      const apiKey = await this.getApiKey();
+      const apiUrl = await this.getApiUrl();
+
+      const response = await fetch(`${apiUrl}/payment/${paymentId}`, {
+        method: "GET",
+        headers: {
+          "x-api-key": apiKey,
+        },
+      });
+
+      if (!response.ok) {
+        return null;
+      }
+
+      const data = await response.json();
+      return {
+        status: data.payment_status,
+        payAddress: data.pay_address,
+        payAmount: String(data.pay_amount),
+        payCurrency: data.pay_currency,
+      };
+    } catch (error) {
+      console.error("Error checking payment status:", error);
+      return null;
     }
   }
 

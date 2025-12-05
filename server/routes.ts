@@ -940,6 +940,68 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/payments/create-direct", requireAuth, async (req, res) => {
+    try {
+      const parsed = createPaymentSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: parsed.error.errors[0].message });
+      }
+
+      const { amount, currency } = parsed.data;
+
+      const transaction = await storage.createTransaction({
+        userId: req.user.id,
+        type: "topup",
+        amount: amount.toString(),
+        currency,
+        status: "pending",
+        paymentMethod: "nowpayments",
+      });
+
+      const baseUrl = `${req.protocol}://${req.get("host")}`;
+      
+      const result = await nowpaymentsService.createDirectPayment({
+        orderId: transaction.id,
+        amount,
+        currency,
+        baseUrl,
+      });
+
+      if (result.success && result.payAddress) {
+        await storage.updateTransaction(transaction.id, {
+          externalId: result.paymentId || transaction.id,
+        });
+        res.json({
+          paymentId: result.paymentId,
+          payAddress: result.payAddress,
+          payAmount: result.payAmount,
+          payCurrency: result.payCurrency,
+          expiresAt: result.expiresAt,
+          qrCodeUrl: result.qrCodeUrl,
+          status: result.status,
+          transactionId: transaction.id,
+        });
+      } else {
+        await storage.updateTransaction(transaction.id, { status: "failed" });
+        res.status(400).json({ message: result.error || "Failed to create payment" });
+      }
+    } catch (error: any) {
+      res.status(500).json({ message: error.message || "Payment creation failed" });
+    }
+  });
+
+  app.get("/api/payments/status/:paymentId", requireAuth, async (req, res) => {
+    try {
+      const result = await nowpaymentsService.getPaymentStatusFull(req.params.paymentId);
+      if (!result) {
+        return res.status(404).json({ message: "Payment not found" });
+      }
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message || "Failed to check payment status" });
+    }
+  });
+
   // Admin: Manually add balance to user
   app.post("/api/admin/users/:id/balance", requireAuth, requireAdmin, async (req, res) => {
     try {
