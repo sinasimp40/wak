@@ -20,7 +20,7 @@ async function seed() {
       email: "admin@rdppanel.com",
       password: hashedPassword,
       role: "admin",
-      balance: "1000.00",
+      balance: "0",
     });
     console.log("Admin user created!");
     console.log("Email: admin@rdppanel.com");
@@ -39,7 +39,7 @@ async function seed() {
       email: "user@rdppanel.com",
       password: hashedPassword,
       role: "customer",
-      balance: "50.00",
+      balance: "0",
     });
     console.log("Regular user created!");
     console.log("Email: user@rdppanel.com");
