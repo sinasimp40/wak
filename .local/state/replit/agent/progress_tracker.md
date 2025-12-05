@@ -6,3 +6,5 @@
 [x] 6. Created PostgreSQL database and pushed schema
 [x] 7. Created admin and user accounts with zero balance (real balance)
 [x] 8. Fixed NOWPayments black screen issue - payment now opens in new tab instead of iframe
+[x] 9. Implemented atomic balance deduction and order creation in single database transaction
+[x] 10. Added HMAC-SHA512 webhook signature verification for NOWPayments payment confirmations
