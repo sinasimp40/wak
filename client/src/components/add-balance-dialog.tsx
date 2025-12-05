@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { CreditCard, Loader2, Plus } from "lucide-react";
+import { CreditCard, Loader2, Plus, X } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -24,6 +24,8 @@ interface PaymentResponse {
 export function AddBalanceDialog() {
   const [open, setOpen] = useState(false);
   const [amount, setAmount] = useState("10");
+  const [paymentUrl, setPaymentUrl] = useState<string | null>(null);
+  const [showPaymentFrame, setShowPaymentFrame] = useState(false);
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -45,12 +47,12 @@ export function AddBalanceDialog() {
     },
     onSuccess: (data) => {
       if (data.paymentUrl) {
-        window.open(data.paymentUrl, "_blank");
+        setPaymentUrl(data.paymentUrl);
+        setShowPaymentFrame(true);
         toast({
-          title: "Payment initiated",
-          description: "A new tab has opened for you to complete the payment.",
+          title: "Payment ready",
+          description: "Complete your payment in the popup below.",
         });
-        setOpen(false);
       } else {
         toast({
           variant: "destructive",
@@ -83,7 +85,44 @@ export function AddBalanceDialog() {
     createPaymentMutation.mutate(amountNum);
   };
 
+  const handleClosePayment = () => {
+    setShowPaymentFrame(false);
+    setPaymentUrl(null);
+    setOpen(false);
+    queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
+  };
+
   const quickAmounts = [10, 25, 50, 100];
+
+  if (showPaymentFrame && paymentUrl) {
+    return (
+      <Dialog open={true} onOpenChange={handleClosePayment}>
+        <DialogContent className="sm:max-w-[600px] md:max-w-[700px] lg:max-w-[800px] h-[80vh] max-h-[700px] p-0 overflow-hidden">
+          <div className="flex items-center justify-between p-4 border-b">
+            <div>
+              <h2 className="text-lg font-semibold">Complete Payment</h2>
+              <p className="text-sm text-muted-foreground">
+                Paying ${amount} USD via MaxelPay
+              </p>
+            </div>
+            <Button variant="ghost" size="icon" onClick={handleClosePayment}>
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
+          <div className="flex-1 h-full">
+            <iframe
+              src={paymentUrl}
+              className="w-full h-full border-0"
+              style={{ minHeight: "550px" }}
+              title="MaxelPay Payment"
+              allow="payment"
+            />
+          </div>
+        </DialogContent>
+      </Dialog>
+    );
+  }
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
