@@ -113,6 +113,17 @@ export const sessions = pgTable("sessions", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+// Login logs for IP tracking
+export const loginLogs = pgTable("login_logs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id),
+  ipAddress: text("ip_address").notNull(),
+  userAgent: text("user_agent"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export type LoginLog = typeof loginLogs.$inferSelect;
+
 // Transactions table for payment tracking
 export const transactions = pgTable("transactions", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),

@@ -14,8 +14,8 @@ import {
   Mail,
   Globe,
   Server,
-  Calendar,
   Eye,
+  History,
 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -64,6 +64,13 @@ interface VpsData {
   createdAt: string;
 }
 
+interface LoginLogData {
+  id: string;
+  ipAddress: string;
+  userAgent: string | null;
+  createdAt: string;
+}
+
 interface UserData {
   id: string;
   username: string;
@@ -84,7 +91,7 @@ export default function AdminUsers() {
   const [searchQuery, setSearchQuery] = useState("");
   const [actionDialog, setActionDialog] = useState<{
     open: boolean;
-    type: "suspend" | "activate" | "delete" | "email" | "vps" | null;
+    type: "suspend" | "activate" | "delete" | "email" | "vps" | "logs" | null;
     userId: string | null;
     username: string | null;
     currentEmail?: string;
@@ -92,6 +99,8 @@ export default function AdminUsers() {
   }>({ open: false, type: null, userId: null, username: null });
   const [newEmail, setNewEmail] = useState("");
   const [suspendDuration, setSuspendDuration] = useState("permanent");
+  const [loginLogs, setLoginLogs] = useState<LoginLogData[]>([]);
+  const [logsLoading, setLogsLoading] = useState(false);
 
   const { data: users, isLoading, refetch, isRefetching } = useQuery<UserData[]>({
     queryKey: ["/api/admin/users"],
@@ -430,6 +439,29 @@ export default function AdminUsers() {
                                 View RDP/VPS
                               </DropdownMenuItem>
                             )}
+                            <DropdownMenuItem
+                              onClick={async () => {
+                                setLogsLoading(true);
+                                setActionDialog({
+                                  open: true,
+                                  type: "logs",
+                                  userId: user.id,
+                                  username: user.username,
+                                });
+                                try {
+                                  const res = await fetch(`/api/admin/users/${user.id}/login-logs`, { credentials: "include" });
+                                  const data = await res.json();
+                                  setLoginLogs(data);
+                                } catch (e) {
+                                  setLoginLogs([]);
+                                } finally {
+                                  setLogsLoading(false);
+                                }
+                              }}
+                            >
+                              <History className="h-4 w-4 mr-2" />
+                              Login History
+                            </DropdownMenuItem>
                             <DropdownMenuSeparator />
                             {user.status === "active" ? (
                               <DropdownMenuItem
@@ -698,6 +730,82 @@ export default function AdminUsers() {
               onClick={() =>
                 setActionDialog({ open: false, type: null, userId: null, username: null })
               }
+            >
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Login Logs Dialog */}
+      <Dialog
+        open={actionDialog.open && actionDialog.type === "logs"}
+        onOpenChange={(open) => {
+          if (!open) {
+            setActionDialog({ open: false, type: null, userId: null, username: null });
+            setLoginLogs([]);
+          }
+        }}
+      >
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <History className="h-5 w-5" />
+              Login History for {actionDialog.username}
+            </DialogTitle>
+            <DialogDescription>
+              Recent login activity including IP addresses and timestamps.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4 max-h-96 overflow-y-auto">
+            {logsLoading ? (
+              <div className="space-y-3">
+                {[1, 2, 3].map((i) => (
+                  <Skeleton key={i} className="h-12 w-full" />
+                ))}
+              </div>
+            ) : loginLogs.length > 0 ? (
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>IP Address</TableHead>
+                      <TableHead>User Agent</TableHead>
+                      <TableHead>Date & Time</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {loginLogs.map((log) => (
+                      <TableRow key={log.id}>
+                        <TableCell>
+                          <code className="text-xs bg-muted px-1.5 py-0.5 rounded">
+                            {log.ipAddress}
+                          </code>
+                        </TableCell>
+                        <TableCell className="max-w-xs truncate text-sm text-muted-foreground">
+                          {log.userAgent || "-"}
+                        </TableCell>
+                        <TableCell className="text-muted-foreground">
+                          {formatDateTime(log.createdAt)}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            ) : (
+              <div className="text-center py-8 text-muted-foreground">
+                No login history found.
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setActionDialog({ open: false, type: null, userId: null, username: null });
+                setLoginLogs([]);
+              }}
             >
               Close
             </Button>

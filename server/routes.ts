@@ -187,6 +187,11 @@ export async function registerRoutes(
       const hashedToken = hashToken(rawToken);
       await storage.createSession(user.id, hashedToken);
 
+      // Log the login IP
+      const loginIp = req.headers['x-forwarded-for']?.toString().split(',')[0] || req.socket.remoteAddress || 'unknown';
+      const userAgent = req.headers['user-agent'] || undefined;
+      await storage.createLoginLog(user.id, loginIp, userAgent);
+
       res.cookie("session_token", rawToken, COOKIE_OPTIONS);
 
       const { password: _, ...userWithoutPassword } = user;
@@ -570,6 +575,45 @@ export async function registerRoutes(
       res.json({ success: true });
     } catch (error: any) {
       res.status(500).json({ message: error.message || "Failed to delete user" });
+    }
+  });
+
+  app.get("/api/admin/users/:id/login-logs", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const logs = await storage.getLoginLogsByUserId(req.params.id);
+      res.json(logs);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message || "Failed to fetch login logs" });
+    }
+  });
+
+  app.post("/api/admin/vps/:vpsId/reboot", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const vpsId = parseInt(req.params.vpsId);
+      if (isNaN(vpsId)) {
+        return res.status(400).json({ message: "Invalid VPS ID" });
+      }
+      await onedashService.rebootVps(vpsId);
+      res.json({ success: true, message: "VPS reboot initiated" });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message || "Failed to reboot VPS" });
+    }
+  });
+
+  app.post("/api/admin/vps/:vpsId/reinstall", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const vpsId = parseInt(req.params.vpsId);
+      const { system } = req.body;
+      if (isNaN(vpsId)) {
+        return res.status(400).json({ message: "Invalid VPS ID" });
+      }
+      if (!system) {
+        return res.status(400).json({ message: "System is required" });
+      }
+      await onedashService.reinstallSystem(vpsId, system);
+      res.json({ success: true, message: "VPS reinstall initiated" });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message || "Failed to reinstall VPS" });
     }
   });
 

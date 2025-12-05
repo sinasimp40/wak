@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { 
   Users, 
@@ -9,12 +10,38 @@ import {
   RefreshCw,
   CloudDownload,
   Loader2,
+  RotateCcw,
+  HardDrive,
+  MoreVertical,
 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatusBadge } from "@/components/status-badge";
 import { useToast } from "@/hooks/use-toast";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Label } from "@/components/ui/label";
+import { apiRequest } from "@/lib/queryClient";
 
 interface AdminStats {
   onedashBalance: number;
@@ -51,16 +78,32 @@ interface OneDashOrder {
   };
 }
 
+interface SystemInfo {
+  name: string;
+  id: string;
+}
+
 export default function AdminDashboard() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const [actionDialog, setActionDialog] = useState<{
+    open: boolean;
+    type: "reboot" | "reinstall" | null;
+    vpsId: number | null;
+    vpsIp: string;
+  }>({ open: false, type: null, vpsId: null, vpsIp: "" });
+  const [selectedSystem, setSelectedSystem] = useState("");
   
   const { data: stats, isLoading, refetch, isRefetching } = useQuery<AdminStats>({
     queryKey: ["/api/admin/stats"],
   });
 
-  const { data: onedashOrders, isLoading: onedashLoading } = useQuery<OneDashOrder[]>({
+  const { data: onedashOrders, isLoading: onedashLoading, refetch: refetchOrders } = useQuery<OneDashOrder[]>({
     queryKey: ["/api/admin/onedash/orders"],
+  });
+
+  const { data: systems } = useQuery<SystemInfo[]>({
+    queryKey: ["/api/systems"],
   });
 
   const syncMutation = useMutation({
@@ -91,6 +134,45 @@ export default function AdminDashboard() {
       });
     },
   });
+
+  const rebootMutation = useMutation({
+    mutationFn: async (vpsId: number) => {
+      return apiRequest("POST", `/api/admin/vps/${vpsId}/reboot`);
+    },
+    onSuccess: () => {
+      toast({ title: "VPS Reboot", description: "VPS reboot has been initiated." });
+      setActionDialog({ open: false, type: null, vpsId: null, vpsIp: "" });
+      refetchOrders();
+    },
+    onError: (error: Error) => {
+      toast({ title: "Reboot Failed", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const reinstallMutation = useMutation({
+    mutationFn: async ({ vpsId, system }: { vpsId: number; system: string }) => {
+      return apiRequest("POST", `/api/admin/vps/${vpsId}/reinstall`, { system });
+    },
+    onSuccess: () => {
+      toast({ title: "VPS Reinstall", description: "VPS reinstall has been initiated." });
+      setActionDialog({ open: false, type: null, vpsId: null, vpsIp: "" });
+      setSelectedSystem("");
+      refetchOrders();
+    },
+    onError: (error: Error) => {
+      toast({ title: "Reinstall Failed", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const handleAction = () => {
+    if (!actionDialog.vpsId) return;
+    
+    if (actionDialog.type === "reboot") {
+      rebootMutation.mutate(actionDialog.vpsId);
+    } else if (actionDialog.type === "reinstall" && selectedSystem) {
+      reinstallMutation.mutate({ vpsId: actionDialog.vpsId, system: selectedSystem });
+    }
+  };
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString("en-US", {
@@ -298,7 +380,44 @@ export default function AdminDashboard() {
                               <span className="font-mono text-sm">{ipDisplay}</span>
                               <span className="text-xs text-muted-foreground">({vps.os})</span>
                             </div>
-                            <StatusBadge status={vps.vps_status} />
+                            <div className="flex items-center gap-2">
+                              <StatusBadge status={vps.vps_status} />
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <Button variant="ghost" size="icon" className="h-8 w-8">
+                                    <MoreVertical className="h-4 w-4" />
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end">
+                                  <DropdownMenuItem
+                                    onClick={() =>
+                                      setActionDialog({
+                                        open: true,
+                                        type: "reboot",
+                                        vpsId: vps.id,
+                                        vpsIp: ipDisplay,
+                                      })
+                                    }
+                                  >
+                                    <RotateCcw className="h-4 w-4 mr-2" />
+                                    Reboot
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem
+                                    onClick={() =>
+                                      setActionDialog({
+                                        open: true,
+                                        type: "reinstall",
+                                        vpsId: vps.id,
+                                        vpsIp: ipDisplay,
+                                      })
+                                    }
+                                  >
+                                    <HardDrive className="h-4 w-4 mr-2" />
+                                    Reinstall OS
+                                  </DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            </div>
                           </div>
                         );
                       })}
@@ -377,6 +496,94 @@ export default function AdminDashboard() {
           )}
         </CardContent>
       </Card>
+
+      {/* Reboot Confirmation Dialog */}
+      <Dialog
+        open={actionDialog.open && actionDialog.type === "reboot"}
+        onOpenChange={(open) => {
+          if (!open) setActionDialog({ open: false, type: null, vpsId: null, vpsIp: "" });
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Reboot VPS</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to reboot the VPS at {actionDialog.vpsIp}?
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setActionDialog({ open: false, type: null, vpsId: null, vpsIp: "" })}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleAction}
+              disabled={rebootMutation.isPending}
+            >
+              {rebootMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              Reboot
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Reinstall Dialog */}
+      <Dialog
+        open={actionDialog.open && actionDialog.type === "reinstall"}
+        onOpenChange={(open) => {
+          if (!open) {
+            setActionDialog({ open: false, type: null, vpsId: null, vpsIp: "" });
+            setSelectedSystem("");
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Reinstall OS</DialogTitle>
+            <DialogDescription>
+              Select a new operating system for VPS at {actionDialog.vpsIp}. This will erase all data.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>Operating System</Label>
+              <Select value={selectedSystem} onValueChange={setSelectedSystem}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select OS" />
+                </SelectTrigger>
+                <SelectContent>
+                  {systems?.map((sys) => (
+                    <SelectItem key={sys.id} value={sys.id}>
+                      {sys.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setActionDialog({ open: false, type: null, vpsId: null, vpsIp: "" });
+                setSelectedSystem("");
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleAction}
+              disabled={reinstallMutation.isPending || !selectedSystem}
+            >
+              {reinstallMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              Reinstall
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

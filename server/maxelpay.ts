@@ -86,6 +86,25 @@ class MaxelPayService {
         body: payloadString,
       });
 
+      const contentType = response.headers.get("content-type") || "";
+      
+      if (!contentType.includes("application/json")) {
+        const text = await response.text();
+        console.error("MaxelPay returned non-JSON response:", text.substring(0, 500));
+        return {
+          success: false,
+          error: `Payment provider returned an error (status ${response.status}). Please check API credentials in Admin Settings.`,
+        };
+      }
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        return {
+          success: false,
+          error: errorData.message || `Payment provider error (status ${response.status})`,
+        };
+      }
+
       const data = await response.json();
 
       if (data.success && data.paymentUrl) {
@@ -100,6 +119,7 @@ class MaxelPayService {
         error: data.message || "Failed to create payment",
       };
     } catch (error: any) {
+      console.error("MaxelPay error:", error);
       return {
         success: false,
         error: error.message || "Payment service unavailable",

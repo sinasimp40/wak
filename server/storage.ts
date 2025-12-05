@@ -9,6 +9,7 @@ import {
   sessions,
   transactions,
   platformSettings,
+  loginLogs,
   type User, 
   type InsertUser,
   type Order,
@@ -20,6 +21,7 @@ import {
   type Transaction,
   type InsertTransaction,
   type PlatformSetting,
+  type LoginLog,
 } from "@shared/schema";
 import { randomBytes } from "crypto";
 import bcrypt from "bcryptjs";
@@ -46,6 +48,10 @@ export interface IStorage {
   createSession(userId: string, hashedToken: string): Promise<void>;
   getSessionUser(hashedToken: string): Promise<User | undefined>;
   deleteSession(hashedToken: string): Promise<void>;
+
+  // Login Logs
+  createLoginLog(userId: string, ipAddress: string, userAgent?: string): Promise<void>;
+  getLoginLogsByUserId(userId: string): Promise<LoginLog[]>;
 
   // Orders
   createOrder(order: InsertOrder): Promise<Order>;
@@ -168,6 +174,15 @@ export class DatabaseStorage implements IStorage {
 
   async deleteSession(token: string): Promise<void> {
     await db.delete(sessions).where(eq(sessions.token, token));
+  }
+
+  // Login Logs
+  async createLoginLog(userId: string, ipAddress: string, userAgent?: string): Promise<void> {
+    await db.insert(loginLogs).values({ userId, ipAddress, userAgent: userAgent || null });
+  }
+
+  async getLoginLogsByUserId(userId: string): Promise<LoginLog[]> {
+    return db.select().from(loginLogs).where(eq(loginLogs.userId, userId)).orderBy(desc(loginLogs.createdAt)).limit(50);
   }
 
   // Orders
