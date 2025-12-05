@@ -1019,6 +1019,20 @@ export async function registerRoutes(
     }
   });
 
+  // Debug endpoint to see raw OneDash response
+  app.get("/api/admin/onedash/debug/:orderId", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const orderId = parseInt(req.params.orderId);
+      if (isNaN(orderId)) {
+        return res.status(400).json({ message: "Invalid order ID" });
+      }
+      const rawResponse = await onedashService.getRawOrderInfo(orderId);
+      res.json(rawResponse);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message || "Failed to fetch order info" });
+    }
+  });
+
   app.post("/api/admin/sync-vps", requireAuth, requireAdmin, async (req, res) => {
     try {
       const onedashOrders = await onedashService.getAllOrders();

@@ -74,6 +74,20 @@ class OneDashService {
     return response.data;
   }
 
+  // Debug method to get raw API response
+  async getRawOrderInfo(orderId: number): Promise<any> {
+    const apiKey = await this.getApiKey();
+    const response = await fetch(`${ONEDASH_API_URL}/order-info`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Api-Key": apiKey,
+      },
+      body: JSON.stringify({ order_id: orderId }),
+    });
+    return response.json();
+  }
+
   async createVps(params: {
     period: number;
     tariff_id: number;
