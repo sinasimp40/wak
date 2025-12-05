@@ -616,6 +616,28 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/admin/api-keys-status", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      res.json({
+        onedash: {
+          configured: !!process.env.ONEDASH_API_KEY,
+          keyPreview: process.env.ONEDASH_API_KEY 
+            ? `${process.env.ONEDASH_API_KEY.substring(0, 4)}...${process.env.ONEDASH_API_KEY.slice(-4)}`
+            : null,
+        },
+        maxelpay: {
+          apiKeyConfigured: !!process.env.MAXELPAY_API_KEY,
+          secretConfigured: !!process.env.MAXELPAY_API_SECRET,
+          keyPreview: process.env.MAXELPAY_API_KEY
+            ? `${process.env.MAXELPAY_API_KEY.substring(0, 4)}...${process.env.MAXELPAY_API_KEY.slice(-4)}`
+            : null,
+        },
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message || "Failed to fetch API keys status" });
+    }
+  });
+
   // ============ ONEDASH VPS SYNC ============
   app.get("/api/admin/onedash/orders", requireAuth, requireAdmin, async (req, res) => {
     try {

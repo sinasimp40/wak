@@ -3,10 +3,12 @@ import type { OneDashTariff, OneDashOrder, OneDashBalance } from "@shared/schema
 const ONEDASH_API_URL = "https://rdp-onedash.com/web-api";
 
 class OneDashService {
-  private apiKey: string;
-
-  constructor() {
-    this.apiKey = process.env.ONEDASH_API_KEY || "";
+  private getApiKey(): string {
+    const apiKey = process.env.ONEDASH_API_KEY;
+    if (!apiKey) {
+      throw new Error("OneDash API key not configured. Please set ONEDASH_API_KEY in Secrets.");
+    }
+    return apiKey;
   }
 
   private async request<T>(
@@ -14,11 +16,13 @@ class OneDashService {
     method: "GET" | "POST" = "GET",
     body?: Record<string, any>
   ): Promise<T> {
+    const apiKey = this.getApiKey();
+    
     const response = await fetch(`${ONEDASH_API_URL}${endpoint}`, {
       method,
       headers: {
         "Content-Type": "application/json",
-        "Api-Key": this.apiKey,
+        "Api-Key": apiKey,
       },
       body: body ? JSON.stringify(body) : undefined,
     });

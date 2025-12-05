@@ -23,16 +23,24 @@ interface PaymentResponse {
 }
 
 class MaxelPayService {
-  private apiKey: string;
-  private apiSecret: string;
+  private getApiKey(): string {
+    const apiKey = process.env.MAXELPAY_API_KEY;
+    if (!apiKey) {
+      throw new Error("MaxelPay API key not configured. Please set MAXELPAY_API_KEY in Secrets.");
+    }
+    return apiKey;
+  }
 
-  constructor() {
-    this.apiKey = process.env.MAXELPAY_API_KEY || "";
-    this.apiSecret = process.env.MAXELPAY_API_SECRET || "";
+  private getApiSecret(): string {
+    const apiSecret = process.env.MAXELPAY_API_SECRET;
+    if (!apiSecret) {
+      throw new Error("MaxelPay API secret not configured. Please set MAXELPAY_API_SECRET in Secrets.");
+    }
+    return apiSecret;
   }
 
   private generateSignature(payload: string): string {
-    return createHmac("sha256", this.apiSecret)
+    return createHmac("sha256", this.getApiSecret())
       .update(payload)
       .digest("hex");
   }
@@ -67,7 +75,7 @@ class MaxelPayService {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "X-API-Key": this.apiKey,
+          "X-API-Key": this.getApiKey(),
           "X-Signature": signature,
         },
         body: payloadString,

@@ -8,17 +8,32 @@ import {
   Server,
   Globe,
   Shield,
+  AlertCircle,
+  CreditCard,
 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 interface ApiHealthCheck {
   status: "connected" | "error";
   balance: number | null;
   currency: string | null;
   lastChecked: string;
+}
+
+interface ApiKeysStatus {
+  onedash: {
+    configured: boolean;
+    keyPreview: string | null;
+  };
+  maxelpay: {
+    apiKeyConfigured: boolean;
+    secretConfigured: boolean;
+    keyPreview: string | null;
+  };
 }
 
 interface SystemInfo {
@@ -30,13 +45,22 @@ interface SystemInfo {
 export default function AdminSettings() {
   const { data: apiHealth, isLoading: healthLoading, refetch, isRefetching } = useQuery<ApiHealthCheck>({
     queryKey: ["/api/admin/health"],
-    refetchInterval: 60000, // Check every minute
+    refetchInterval: 60000,
+  });
+
+  const { data: apiKeysStatus, isLoading: keysLoading, refetch: refetchKeys } = useQuery<ApiKeysStatus>({
+    queryKey: ["/api/admin/api-keys-status"],
   });
 
   const systemInfo: SystemInfo = {
     version: "1.0.0",
     environment: "production",
     uptime: "99.9%",
+  };
+
+  const handleRefresh = () => {
+    refetch();
+    refetchKeys();
   };
 
   return (
@@ -50,7 +74,7 @@ export default function AdminSettings() {
         </div>
         <Button
           variant="outline"
-          onClick={() => refetch()}
+          onClick={handleRefresh}
           disabled={isRefetching}
           data-testid="button-refresh-settings"
         >
@@ -58,6 +82,139 @@ export default function AdminSettings() {
           Refresh Status
         </Button>
       </div>
+
+      {/* API Keys Configuration */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Key className="h-5 w-5" />
+            API Keys Configuration
+          </CardTitle>
+          <CardDescription>
+            Manage your OneDash and MaxelPay API credentials. Update keys in the Secrets tab.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {keysLoading ? (
+            <div className="space-y-4">
+              <Skeleton className="h-20 w-full" />
+              <Skeleton className="h-20 w-full" />
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {/* OneDash API Key */}
+              <div className="flex items-center justify-between p-4 rounded-lg border">
+                <div className="flex items-center gap-4">
+                  {apiKeysStatus?.onedash.configured ? (
+                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-500/10">
+                      <CheckCircle className="h-5 w-5 text-emerald-500" />
+                    </div>
+                  ) : (
+                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-amber-500/10">
+                      <AlertCircle className="h-5 w-5 text-amber-500" />
+                    </div>
+                  )}
+                  <div>
+                    <div className="font-medium">OneDash API Key</div>
+                    <div className="text-sm text-muted-foreground">
+                      {apiKeysStatus?.onedash.configured
+                        ? `Configured: ${apiKeysStatus.onedash.keyPreview}`
+                        : "Not configured - Set ONEDASH_API_KEY in Secrets"}
+                    </div>
+                  </div>
+                </div>
+                <Badge
+                  variant="outline"
+                  className={
+                    apiKeysStatus?.onedash.configured
+                      ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/20"
+                      : "bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/20"
+                  }
+                >
+                  {apiKeysStatus?.onedash.configured ? "Configured" : "Missing"}
+                </Badge>
+              </div>
+
+              {/* MaxelPay API Key */}
+              <div className="flex items-center justify-between p-4 rounded-lg border">
+                <div className="flex items-center gap-4">
+                  {apiKeysStatus?.maxelpay.apiKeyConfigured ? (
+                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-500/10">
+                      <CreditCard className="h-5 w-5 text-emerald-500" />
+                    </div>
+                  ) : (
+                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-amber-500/10">
+                      <CreditCard className="h-5 w-5 text-amber-500" />
+                    </div>
+                  )}
+                  <div>
+                    <div className="font-medium">MaxelPay API Key</div>
+                    <div className="text-sm text-muted-foreground">
+                      {apiKeysStatus?.maxelpay.apiKeyConfigured
+                        ? `Configured: ${apiKeysStatus.maxelpay.keyPreview}`
+                        : "Not configured - Set MAXELPAY_API_KEY in Secrets"}
+                    </div>
+                  </div>
+                </div>
+                <Badge
+                  variant="outline"
+                  className={
+                    apiKeysStatus?.maxelpay.apiKeyConfigured
+                      ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/20"
+                      : "bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/20"
+                  }
+                >
+                  {apiKeysStatus?.maxelpay.apiKeyConfigured ? "Configured" : "Missing"}
+                </Badge>
+              </div>
+
+              {/* MaxelPay Secret */}
+              <div className="flex items-center justify-between p-4 rounded-lg border">
+                <div className="flex items-center gap-4">
+                  {apiKeysStatus?.maxelpay.secretConfigured ? (
+                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-500/10">
+                      <Shield className="h-5 w-5 text-emerald-500" />
+                    </div>
+                  ) : (
+                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-amber-500/10">
+                      <Shield className="h-5 w-5 text-amber-500" />
+                    </div>
+                  )}
+                  <div>
+                    <div className="font-medium">MaxelPay API Secret</div>
+                    <div className="text-sm text-muted-foreground">
+                      {apiKeysStatus?.maxelpay.secretConfigured
+                        ? "Secret is configured"
+                        : "Not configured - Set MAXELPAY_API_SECRET in Secrets"}
+                    </div>
+                  </div>
+                </div>
+                <Badge
+                  variant="outline"
+                  className={
+                    apiKeysStatus?.maxelpay.secretConfigured
+                      ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/20"
+                      : "bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/20"
+                  }
+                >
+                  {apiKeysStatus?.maxelpay.secretConfigured ? "Configured" : "Missing"}
+                </Badge>
+              </div>
+
+              {(!apiKeysStatus?.onedash.configured || !apiKeysStatus?.maxelpay.apiKeyConfigured || !apiKeysStatus?.maxelpay.secretConfigured) && (
+                <Alert>
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertTitle>Action Required</AlertTitle>
+                  <AlertDescription>
+                    Some API keys are missing. Go to the Secrets tab in your Replit workspace to configure them.
+                    Required keys: ONEDASH_API_KEY, MAXELPAY_API_KEY, MAXELPAY_API_SECRET
+                  </AlertDescription>
+                </Alert>
+              )}
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* API Connection Status */}
       <Card>
