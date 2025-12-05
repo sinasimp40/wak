@@ -21,3 +21,4 @@
 [x] 21. Added VPS credentials view/edit to admin VPS live list (IP, username, password with change option)
 [x] 22. Added real-time OneDash balance with auto-refresh every 30 seconds and dedicated refresh button
 [x] 23. Created new accounts: admin@panel.com / admin123 (with $2.00 balance), user@panel.com / user123 (with $0 balance)
+[x] 24. Re-provisioned database and created fresh accounts: admin@rdppanel.com / admin123 ($2.00 balance), user@rdppanel.com / user123 ($0 balance)
