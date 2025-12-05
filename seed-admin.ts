@@ -1,12 +1,14 @@
-import { neon } from "@neondatabase/serverless";
-import { drizzle } from "drizzle-orm/neon-http";
+import pg from "pg";
+import { drizzle } from "drizzle-orm/node-postgres";
 import { users } from "./shared/schema";
 import { eq } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 
 async function seed() {
-  const sql = neon(process.env.DATABASE_URL!);
-  const db = drizzle(sql);
+  const pool = new pg.Pool({
+    connectionString: process.env.DATABASE_URL,
+  });
+  const db = drizzle(pool);
 
   // Check if admin already exists
   const existingAdmin = await db.select().from(users).where(eq(users.email, 'admin@rdppanel.com'));
@@ -33,11 +35,11 @@ async function seed() {
   if (existingUser.length === 0) {
     const hashedPassword = await bcrypt.hash("user123", 10);
     await db.insert(users).values({
-      username: "user",
+      username: "testuser",
       email: "user@rdppanel.com",
       password: hashedPassword,
       role: "customer",
-      balance: "0.00",
+      balance: "50.00",
     });
     console.log("Regular user created!");
     console.log("Email: user@rdppanel.com");
@@ -45,6 +47,8 @@ async function seed() {
   } else {
     console.log("Regular user already exists");
   }
+
+  await pool.end();
 }
 
 seed().catch(console.error);

@@ -58,7 +58,21 @@ async function requireAuth(req: Request, res: Response, next: NextFunction) {
     }
 
     if (user.status === "suspended") {
-      return res.status(403).json({ message: "Account suspended" });
+      if (user.suspendedUntil) {
+        const suspendedUntilDate = new Date(user.suspendedUntil);
+        if (suspendedUntilDate <= new Date()) {
+          await storage.updateUserStatus(user.id, "active", null);
+          user.status = "active";
+          user.suspendedUntil = null;
+        } else {
+          const daysRemaining = Math.ceil((suspendedUntilDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+          return res.status(403).json({ 
+            message: `Account suspended until ${suspendedUntilDate.toLocaleDateString()}. ${daysRemaining} day(s) remaining.` 
+          });
+        }
+      } else {
+        return res.status(403).json({ message: "Account suspended permanently" });
+      }
     }
 
     req.user = user;
@@ -151,7 +165,21 @@ export async function registerRoutes(
       }
 
       if (user.status === "suspended") {
-        return res.status(403).json({ message: "Account suspended" });
+        if (user.suspendedUntil) {
+          const suspendedUntilDate = new Date(user.suspendedUntil);
+          if (suspendedUntilDate <= new Date()) {
+            await storage.updateUserStatus(user.id, "active", null);
+            user.status = "active";
+            user.suspendedUntil = null;
+          } else {
+            const daysRemaining = Math.ceil((suspendedUntilDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+            return res.status(403).json({ 
+              message: `Account suspended until ${suspendedUntilDate.toLocaleDateString()}. ${daysRemaining} day(s) remaining.` 
+            });
+          }
+        } else {
+          return res.status(403).json({ message: "Account suspended permanently" });
+        }
       }
 
       // Generate secure token, store hash
