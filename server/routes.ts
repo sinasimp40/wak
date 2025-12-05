@@ -584,6 +584,7 @@ export async function registerRoutes(
           vpsCount: userVps.length,
           vpsList: userVps.map((vps) => ({
             id: vps.id,
+            onedashVpsId: vps.onedashVpsId,
             os: vps.os,
             ipAddress: vps.ipAddress,
             status: vps.status,
@@ -755,6 +756,57 @@ export async function registerRoutes(
       }
 
       await storage.updateVps(vps.id, updates);
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message || "Failed to update VPS credentials" });
+    }
+  });
+
+  app.get("/api/admin/vps-local/:vpsId/credentials", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const vpsId = req.params.vpsId;
+      const vps = await storage.getVpsById(vpsId);
+      if (!vps) {
+        return res.status(404).json({ message: "VPS not found" });
+      }
+      
+      res.json({
+        username: vps.rdpUsername || "Administrator",
+        password: vps.rdpPassword || null,
+        ipAddress: vps.ipAddress,
+        onedashVpsId: vps.onedashVpsId,
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message || "Failed to get VPS credentials" });
+    }
+  });
+
+  app.patch("/api/admin/vps-local/:vpsId/credentials", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const vpsId = req.params.vpsId;
+      const { username, password } = req.body;
+      
+      if (username !== undefined && (typeof username !== "string" || username.length > 100)) {
+        return res.status(400).json({ message: "Invalid username format" });
+      }
+      if (password !== undefined && (typeof password !== "string" || password.length > 200)) {
+        return res.status(400).json({ message: "Invalid password format" });
+      }
+      
+      const vps = await storage.getVpsById(vpsId);
+      if (!vps) {
+        return res.status(404).json({ message: "VPS not found" });
+      }
+
+      const updates: { rdpUsername?: string; rdpPassword?: string } = {};
+      if (username !== undefined) {
+        updates.rdpUsername = username.trim();
+      }
+      if (password !== undefined) {
+        updates.rdpPassword = password;
+      }
+
+      await storage.updateVps(vpsId, updates);
       res.json({ success: true });
     } catch (error: any) {
       res.status(500).json({ message: error.message || "Failed to update VPS credentials" });

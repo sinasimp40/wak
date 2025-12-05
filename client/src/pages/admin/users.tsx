@@ -14,8 +14,11 @@ import {
   Mail,
   Server,
   Eye,
+  EyeOff,
   History,
   Key,
+  Copy,
+  Pencil,
 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -58,10 +61,18 @@ import { queryClient, apiRequest } from "@/lib/queryClient";
 
 interface VpsData {
   id: string;
+  onedashVpsId: number | null;
   os: string;
   ipAddress: string | null;
   status: string;
   createdAt: string;
+}
+
+interface VpsCredentials {
+  username: string;
+  password: string | null;
+  ipAddress: string | null;
+  onedashVpsId: number | null;
 }
 
 interface LoginLogData {
@@ -102,6 +113,14 @@ export default function AdminUsers() {
   const [suspendDuration, setSuspendDuration] = useState("permanent");
   const [loginLogs, setLoginLogs] = useState<LoginLogData[]>([]);
   const [logsLoading, setLogsLoading] = useState(false);
+  
+  const [selectedVps, setSelectedVps] = useState<VpsData | null>(null);
+  const [vpsCredentials, setVpsCredentials] = useState<VpsCredentials | null>(null);
+  const [vpsCredentialsLoading, setVpsCredentialsLoading] = useState(false);
+  const [showVpsPassword, setShowVpsPassword] = useState(false);
+  const [editingVpsCredentials, setEditingVpsCredentials] = useState(false);
+  const [editVpsUsername, setEditVpsUsername] = useState("");
+  const [editVpsPassword, setEditVpsPassword] = useState("");
 
   const { data: users, isLoading, refetch, isRefetching } = useQuery<UserData[]>({
     queryKey: ["/api/admin/users"],
@@ -165,6 +184,49 @@ export default function AdminUsers() {
       toast({ title: "Delete failed", description: error.message, variant: "destructive" });
     },
   });
+
+  const updateVpsCredentialsMutation = useMutation({
+    mutationFn: async ({ vpsId, username, password }: { vpsId: string; username?: string; password?: string }) => {
+      return apiRequest("PATCH", `/api/admin/vps-local/${vpsId}/credentials`, { username, password });
+    },
+    onSuccess: () => {
+      toast({ title: "Credentials updated", description: "VPS credentials have been updated." });
+      setEditingVpsCredentials(false);
+      setEditVpsUsername("");
+      setEditVpsPassword("");
+      if (selectedVps) {
+        fetchVpsCredentials(selectedVps.id);
+      }
+    },
+    onError: (error: Error) => {
+      toast({ title: "Update failed", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const fetchVpsCredentials = async (vpsId: string) => {
+    setVpsCredentialsLoading(true);
+    try {
+      const response = await fetch(`/api/admin/vps-local/${vpsId}/credentials`, {
+        credentials: "include",
+      });
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || "Failed to fetch credentials");
+      }
+      const data = await response.json();
+      setVpsCredentials(data);
+    } catch (error: any) {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+      setVpsCredentials(null);
+    } finally {
+      setVpsCredentialsLoading(false);
+    }
+  };
+
+  const copyToClipboard = (text: string, label: string) => {
+    navigator.clipboard.writeText(text);
+    toast({ title: "Copied", description: `${label} copied to clipboard.` });
+  };
 
   const filteredUsers = users?.filter(
     (user) =>
@@ -736,63 +798,257 @@ export default function AdminUsers() {
         onOpenChange={(open) => {
           if (!open) {
             setActionDialog({ open: false, type: null, userId: null, username: null });
+            setSelectedVps(null);
+            setVpsCredentials(null);
+            setShowVpsPassword(false);
+            setEditingVpsCredentials(false);
+            setEditVpsUsername("");
+            setEditVpsPassword("");
           }
         }}
       >
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-3xl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Server className="h-5 w-5" />
               RDP/VPS for {actionDialog.username}
             </DialogTitle>
             <DialogDescription>
-              List of all RDP/VPS instances owned by this user.
+              List of all RDP/VPS instances owned by this user. Click on a VPS to view credentials.
             </DialogDescription>
           </DialogHeader>
           <div className="py-4">
             {actionDialog.vpsList && actionDialog.vpsList.length > 0 ? (
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>OS</TableHead>
-                      <TableHead>IP Address</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Created</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {actionDialog.vpsList.map((vps) => (
-                      <TableRow key={vps.id}>
-                        <TableCell className="font-medium">{vps.os}</TableCell>
-                        <TableCell>
-                          {vps.ipAddress ? (
-                            <code className="text-xs bg-muted px-1.5 py-0.5 rounded">
-                              {vps.ipAddress}
-                            </code>
-                          ) : (
-                            <span className="text-muted-foreground">Not assigned</span>
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          <Badge
-                            variant="outline"
-                            className={
-                              vps.status === "runned"
-                                ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/20"
-                                : "bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/20"
-                            }
-                          >
-                            {vps.status}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-muted-foreground">
-                          {formatDateTime(vps.createdAt)}
-                        </TableCell>
+              <div className="space-y-4">
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>OS</TableHead>
+                        <TableHead>IP Address</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Created</TableHead>
+                        <TableHead className="text-right">Actions</TableHead>
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                    </TableHeader>
+                    <TableBody>
+                      {actionDialog.vpsList.map((vps) => (
+                        <TableRow 
+                          key={vps.id} 
+                          className={selectedVps?.id === vps.id ? "bg-muted/50" : ""}
+                        >
+                          <TableCell className="font-medium">{vps.os}</TableCell>
+                          <TableCell>
+                            {vps.ipAddress ? (
+                              <code className="text-xs bg-muted px-1.5 py-0.5 rounded">
+                                {vps.ipAddress}
+                              </code>
+                            ) : (
+                              <span className="text-muted-foreground">Not assigned</span>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            <Badge
+                              variant="outline"
+                              className={
+                                vps.status === "runned"
+                                  ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/20"
+                                  : "bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/20"
+                              }
+                            >
+                              {vps.status}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-muted-foreground">
+                            {formatDateTime(vps.createdAt)}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => {
+                                setSelectedVps(vps);
+                                setShowVpsPassword(false);
+                                setEditingVpsCredentials(false);
+                                fetchVpsCredentials(vps.id);
+                              }}
+                              data-testid={`button-view-credentials-${vps.id}`}
+                            >
+                              <Key className="h-3 w-3 mr-1" />
+                              Credentials
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+
+                {selectedVps && (
+                  <Card className="border-primary/20">
+                    <CardHeader className="pb-3">
+                      <CardTitle className="text-sm flex items-center justify-between gap-2">
+                        <span className="flex items-center gap-2">
+                          <Key className="h-4 w-4" />
+                          Credentials for {selectedVps.ipAddress || selectedVps.os}
+                        </span>
+                        {!editingVpsCredentials && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => {
+                              setEditingVpsCredentials(true);
+                              setEditVpsUsername(vpsCredentials?.username || "");
+                              setEditVpsPassword("");
+                            }}
+                            data-testid="button-edit-vps-credentials"
+                          >
+                            <Pencil className="h-3 w-3 mr-1" />
+                            Edit
+                          </Button>
+                        )}
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-3">
+                      {vpsCredentialsLoading ? (
+                        <div className="space-y-2">
+                          <Skeleton className="h-8 w-full" />
+                          <Skeleton className="h-8 w-full" />
+                        </div>
+                      ) : editingVpsCredentials ? (
+                        <div className="space-y-3">
+                          <div className="space-y-1.5">
+                            <Label className="text-xs">Username</Label>
+                            <Input
+                              value={editVpsUsername}
+                              onChange={(e) => setEditVpsUsername(e.target.value)}
+                              placeholder="Enter username"
+                              data-testid="input-vps-username"
+                            />
+                          </div>
+                          <div className="space-y-1.5">
+                            <Label className="text-xs">Password</Label>
+                            <Input
+                              type="password"
+                              value={editVpsPassword}
+                              onChange={(e) => setEditVpsPassword(e.target.value)}
+                              placeholder="Enter new password (leave empty to keep current)"
+                              data-testid="input-vps-password"
+                            />
+                          </div>
+                          <div className="flex justify-end gap-2 pt-2">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => {
+                                setEditingVpsCredentials(false);
+                                setEditVpsUsername("");
+                                setEditVpsPassword("");
+                              }}
+                            >
+                              Cancel
+                            </Button>
+                            <Button
+                              size="sm"
+                              onClick={() => {
+                                const updates: { username?: string; password?: string } = {};
+                                if (editVpsUsername && editVpsUsername !== vpsCredentials?.username) {
+                                  updates.username = editVpsUsername;
+                                }
+                                if (editVpsPassword) {
+                                  updates.password = editVpsPassword;
+                                }
+                                if (Object.keys(updates).length > 0) {
+                                  updateVpsCredentialsMutation.mutate({
+                                    vpsId: selectedVps.id,
+                                    ...updates,
+                                  });
+                                } else {
+                                  setEditingVpsCredentials(false);
+                                }
+                              }}
+                              disabled={updateVpsCredentialsMutation.isPending}
+                              data-testid="button-save-vps-credentials"
+                            >
+                              {updateVpsCredentialsMutation.isPending ? (
+                                <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                              ) : null}
+                              Save
+                            </Button>
+                          </div>
+                        </div>
+                      ) : vpsCredentials ? (
+                        <div className="space-y-3">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs text-muted-foreground">Username</span>
+                            <div className="flex items-center gap-2">
+                              <code className="text-xs bg-muted px-2 py-1 rounded">
+                                {vpsCredentials.username}
+                              </code>
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                className="h-6 w-6"
+                                onClick={() => copyToClipboard(vpsCredentials.username, "Username")}
+                                data-testid="button-copy-vps-username"
+                              >
+                                <Copy className="h-3 w-3" />
+                              </Button>
+                            </div>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs text-muted-foreground">Password</span>
+                            <div className="flex items-center gap-2">
+                              {vpsCredentials.password ? (
+                                <>
+                                  <code className="text-xs bg-muted px-2 py-1 rounded font-mono">
+                                    {showVpsPassword ? vpsCredentials.password : "••••••••"}
+                                  </code>
+                                  <Button
+                                    size="icon"
+                                    variant="ghost"
+                                    className="h-6 w-6"
+                                    onClick={() => setShowVpsPassword(!showVpsPassword)}
+                                    data-testid="button-toggle-vps-password"
+                                  >
+                                    {showVpsPassword ? (
+                                      <EyeOff className="h-3 w-3" />
+                                    ) : (
+                                      <Eye className="h-3 w-3" />
+                                    )}
+                                  </Button>
+                                  <Button
+                                    size="icon"
+                                    variant="ghost"
+                                    className="h-6 w-6"
+                                    onClick={() => copyToClipboard(vpsCredentials.password!, "Password")}
+                                    data-testid="button-copy-vps-password"
+                                  >
+                                    <Copy className="h-3 w-3" />
+                                  </Button>
+                                </>
+                              ) : (
+                                <span className="text-xs text-muted-foreground italic">Not set</span>
+                              )}
+                            </div>
+                          </div>
+                          {vpsCredentials.onedashVpsId && (
+                            <div className="flex items-center justify-between pt-2 border-t">
+                              <span className="text-xs text-muted-foreground">OneDash VPS ID</span>
+                              <code className="text-xs bg-muted px-2 py-1 rounded">
+                                {vpsCredentials.onedashVpsId}
+                              </code>
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="text-center py-4 text-sm text-muted-foreground">
+                          Unable to load credentials
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                )}
               </div>
             ) : (
               <div className="text-center py-8 text-muted-foreground">
@@ -803,9 +1059,13 @@ export default function AdminUsers() {
           <DialogFooter>
             <Button
               variant="outline"
-              onClick={() =>
-                setActionDialog({ open: false, type: null, userId: null, username: null })
-              }
+              onClick={() => {
+                setActionDialog({ open: false, type: null, userId: null, username: null });
+                setSelectedVps(null);
+                setVpsCredentials(null);
+                setShowVpsPassword(false);
+                setEditingVpsCredentials(false);
+              }}
             >
               Close
             </Button>
