@@ -34,9 +34,10 @@ export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
   getUserByEmail(email: string): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
-  createUser(user: InsertUser & { role?: string }): Promise<User>;
+  createUser(user: InsertUser & { role?: string; registrationIp?: string }): Promise<User>;
   getAllUsers(): Promise<User[]>;
-  updateUserStatus(userId: string, status: string): Promise<void>;
+  updateUserStatus(userId: string, status: string, suspendedUntil?: Date | null): Promise<void>;
+  updateUserEmail(userId: string, email: string): Promise<void>;
   deleteUser(userId: string): Promise<void>;
   updateUserBalance(userId: string, balance: string): Promise<void>;
   addToUserBalance(userId: string, amount: number): Promise<void>;
@@ -111,13 +112,14 @@ export class DatabaseStorage implements IStorage {
     return result[0];
   }
 
-  async createUser(userData: InsertUser & { role?: string }): Promise<User> {
+  async createUser(userData: InsertUser & { role?: string; registrationIp?: string }): Promise<User> {
     const hashedPassword = await bcrypt.hash(userData.password, 10);
     const result = await db.insert(users).values({
       username: userData.username,
       email: userData.email,
       password: hashedPassword,
       role: userData.role || "customer",
+      registrationIp: userData.registrationIp || null,
     }).returning();
     return result[0];
   }
@@ -126,8 +128,15 @@ export class DatabaseStorage implements IStorage {
     return db.select().from(users).orderBy(desc(users.createdAt));
   }
 
-  async updateUserStatus(userId: string, status: string): Promise<void> {
-    await db.update(users).set({ status }).where(eq(users.id, userId));
+  async updateUserStatus(userId: string, status: string, suspendedUntil?: Date | null): Promise<void> {
+    await db.update(users).set({ 
+      status, 
+      suspendedUntil: suspendedUntil !== undefined ? suspendedUntil : (status === "active" ? null : undefined)
+    }).where(eq(users.id, userId));
+  }
+
+  async updateUserEmail(userId: string, email: string): Promise<void> {
+    await db.update(users).set({ email }).where(eq(users.id, userId));
   }
 
   async deleteUser(userId: string): Promise<void> {

@@ -12,6 +12,8 @@ export const users = pgTable("users", {
   role: text("role").notNull().default("customer"), // "customer" | "admin"
   status: text("status").notNull().default("active"), // "active" | "suspended"
   balance: decimal("balance", { precision: 10, scale: 2 }).notNull().default("0"),
+  registrationIp: text("registration_ip"),
+  suspendedUntil: timestamp("suspended_until"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

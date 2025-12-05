@@ -116,7 +116,8 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Username already taken" });
       }
 
-      const user = await storage.createUser(parsed.data);
+      const registrationIp = req.headers['x-forwarded-for']?.toString().split(',')[0] || req.socket.remoteAddress || null;
+      const user = await storage.createUser({ ...parsed.data, registrationIp: registrationIp || undefined });
       
       // Generate secure token, store hash
       const rawToken = generateSecureToken();
@@ -476,8 +477,17 @@ export async function registerRoutes(
           role: user.role,
           status: user.status,
           balance: user.balance,
+          registrationIp: user.registrationIp,
+          suspendedUntil: user.suspendedUntil,
           ordersCount: userOrders.length,
           vpsCount: userVps.length,
+          vpsList: userVps.map((vps) => ({
+            id: vps.id,
+            os: vps.os,
+            ipAddress: vps.ipAddress,
+            status: vps.status,
+            createdAt: vps.createdAt,
+          })),
           createdAt: user.createdAt,
         };
       });
@@ -490,15 +500,39 @@ export async function registerRoutes(
 
   app.patch("/api/admin/users/:id/status", requireAuth, requireAdmin, async (req, res) => {
     try {
-      const { status } = req.body;
+      const { status, suspendedUntil } = req.body;
       if (!["active", "suspended"].includes(status)) {
         return res.status(400).json({ message: "Invalid status" });
       }
 
-      await storage.updateUserStatus(req.params.id, status);
+      let suspendedUntilDate: Date | null = null;
+      if (status === "suspended" && suspendedUntil) {
+        suspendedUntilDate = new Date(suspendedUntil);
+      }
+
+      await storage.updateUserStatus(req.params.id, status, suspendedUntilDate);
       res.json({ success: true });
     } catch (error: any) {
       res.status(500).json({ message: error.message || "Failed to update user status" });
+    }
+  });
+
+  app.patch("/api/admin/users/:id/email", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const { email } = req.body;
+      if (!email || typeof email !== "string" || !email.includes("@")) {
+        return res.status(400).json({ message: "Valid email is required" });
+      }
+
+      const existingUser = await storage.getUserByEmail(email);
+      if (existingUser && existingUser.id !== req.params.id) {
+        return res.status(400).json({ message: "Email already in use" });
+      }
+
+      await storage.updateUserEmail(req.params.id, email);
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message || "Failed to update user email" });
     }
   });
 
