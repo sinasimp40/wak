@@ -371,16 +371,29 @@ export async function registerRoutes(
         }
       }
 
-      // Create order in database
-      const order = await storage.createOrder({
-        userId: req.user.id,
-        tariffId,
-        tariffName: tariff.name,
-        location,
-        period,
-        count,
-        totalPrice: totalPrice.toFixed(2),
-      });
+      // Create order and deduct balance in a single transaction
+      let order;
+      try {
+        const result = await storage.createOrderWithBalanceDeduction({
+          userId: req.user.id,
+          tariffId,
+          tariffName: tariff.name,
+          location,
+          period,
+          count,
+          totalPrice: totalPrice.toFixed(2),
+        }, totalPrice);
+        order = result.order;
+      } catch (txError: any) {
+        if (txError.message === "Insufficient balance") {
+          const freshUser = await storage.getUser(req.user.id);
+          const userBalance = parseFloat(freshUser?.balance?.toString() || "0");
+          return res.status(400).json({ 
+            message: `Insufficient balance. You need $${totalPrice.toFixed(2)} but have $${userBalance.toFixed(2)}. Please add funds to your account.` 
+          });
+        }
+        throw txError;
+      }
 
       // Try to create VPS via OneDash API
       try {
@@ -417,20 +430,14 @@ export async function registerRoutes(
 
         res.json({ success: true, orderId: order.id });
       } catch (apiError: any) {
-        // If API fails, keep order as pending
-        await storage.updateOrder(order.id, { status: "pending" });
+        // If API fails, refund the balance and mark order as failed
+        await storage.addToUserBalance(req.user.id, totalPrice);
+        await storage.updateOrder(order.id, { status: "failed" });
         
-        // Still create placeholder VPS instances
-        for (let i = 0; i < count; i++) {
-          await storage.createVpsInstance({
-            orderId: order.id,
-            userId: req.user.id,
-            os: system,
-            status: "not_runned",
-          });
-        }
-
-        res.json({ success: true, orderId: order.id, pending: true });
+        res.status(500).json({ 
+          message: "Failed to create VPS with OneDash. Your balance has been refunded. Please try again later.",
+          refunded: true
+        });
       }
     } catch (error: any) {
       res.status(500).json({ message: error.message || "Failed to create order" });

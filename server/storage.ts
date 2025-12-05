@@ -43,6 +43,7 @@ export interface IStorage {
   deleteUser(userId: string): Promise<void>;
   updateUserBalance(userId: string, balance: string): Promise<void>;
   addToUserBalance(userId: string, amount: number): Promise<void>;
+  deductFromUserBalance(userId: string, amount: number): Promise<boolean>;
 
   // Sessions
   createSession(userId: string, hashedToken: string): Promise<void>;
@@ -55,6 +56,7 @@ export interface IStorage {
 
   // Orders
   createOrder(order: InsertOrder): Promise<Order>;
+  createOrderWithBalanceDeduction(order: InsertOrder, amount: number): Promise<{ order: Order; deducted: boolean }>;
   getOrderById(id: string): Promise<Order | undefined>;
   getOrderByOnedashId(onedashOrderId: number): Promise<Order | undefined>;
   getOrdersByUserId(userId: string): Promise<Order[]>;
@@ -189,6 +191,33 @@ export class DatabaseStorage implements IStorage {
   async createOrder(order: InsertOrder): Promise<Order> {
     const result = await db.insert(orders).values(order).returning();
     return result[0];
+  }
+
+  async createOrderWithBalanceDeduction(order: InsertOrder, amount: number): Promise<{ order: Order; deducted: boolean }> {
+    const amountDecimal = amount.toFixed(2);
+    
+    return await db.transaction(async (tx) => {
+      const balanceResult = await tx
+        .update(users)
+        .set({
+          balance: sql`${users.balance} - ${amountDecimal}::decimal`,
+        })
+        .where(
+          and(
+            eq(users.id, order.userId),
+            sql`${users.balance} >= ${amountDecimal}::decimal`
+          )
+        )
+        .returning({ id: users.id });
+
+      if (balanceResult.length === 0) {
+        throw new Error("Insufficient balance");
+      }
+
+      const orderResult = await tx.insert(orders).values(order).returning();
+      
+      return { order: orderResult[0], deducted: true };
+    });
   }
 
   async getOrderById(id: string): Promise<Order | undefined> {
@@ -345,6 +374,24 @@ export class DatabaseStorage implements IStorage {
       const newBalance = (currentBalance + amount).toFixed(2);
       await this.updateUserBalance(userId, newBalance);
     }
+  }
+
+  async deductFromUserBalance(userId: string, amount: number): Promise<boolean> {
+    const amountDecimal = amount.toFixed(2);
+    const result = await db
+      .update(users)
+      .set({
+        balance: sql`${users.balance} - ${amountDecimal}::decimal`,
+      })
+      .where(
+        and(
+          eq(users.id, userId),
+          sql`${users.balance} >= ${amountDecimal}::decimal`
+        )
+      )
+      .returning({ id: users.id });
+    
+    return result.length > 0;
   }
 
   // Platform Settings

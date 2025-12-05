@@ -1,4 +1,5 @@
 import { storage } from "./storage";
+import crypto from "crypto";
 
 const NOWPAYMENTS_API_URL = "https://api.nowpayments.io/v1";
 const NOWPAYMENTS_SANDBOX_URL = "https://api-sandbox.nowpayments.io/v1";
@@ -123,8 +124,46 @@ class NowPaymentsService {
     }
   }
 
+  private sortObjectKeys(obj: any): any {
+    if (obj === null || typeof obj !== 'object') {
+      return obj;
+    }
+    if (Array.isArray(obj)) {
+      return obj.map(item => this.sortObjectKeys(item));
+    }
+    const sortedKeys = Object.keys(obj).sort();
+    const result: Record<string, any> = {};
+    for (const key of sortedKeys) {
+      result[key] = this.sortObjectKeys(obj[key]);
+    }
+    return result;
+  }
+
   async verifyWebhook(payload: any, signature: string): Promise<boolean> {
-    return true;
+    try {
+      const ipnSecret = await storage.getSetting("NOWPAYMENTS_IPN_SECRET");
+      if (!ipnSecret) {
+        console.warn("NOWPayments IPN Secret not configured. Skipping signature verification.");
+        return true;
+      }
+
+      if (!signature) {
+        console.error("No signature provided in webhook request");
+        return false;
+      }
+
+      const sortedPayload = this.sortObjectKeys(payload);
+      const payloadString = JSON.stringify(sortedPayload);
+      const calculatedSignature = crypto
+        .createHmac("sha512", ipnSecret)
+        .update(payloadString)
+        .digest("hex");
+
+      return calculatedSignature === signature;
+    } catch (error) {
+      console.error("Webhook verification error:", error);
+      return false;
+    }
   }
 
   async getPaymentStatus(paymentId: string): Promise<string | null> {
