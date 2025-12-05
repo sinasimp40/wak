@@ -13,9 +13,15 @@ import {
   RotateCcw,
   HardDrive,
   MoreVertical,
+  Key,
+  Eye,
+  EyeOff,
+  Copy,
+  Edit,
 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatusBadge } from "@/components/status-badge";
 import { useToast } from "@/hooks/use-toast";
@@ -93,9 +99,24 @@ export default function AdminDashboard() {
     vpsIp: string;
   }>({ open: false, type: null, vpsId: null, vpsIp: "" });
   const [selectedSystem, setSelectedSystem] = useState("");
+  const [credentialsDialog, setCredentialsDialog] = useState<{
+    open: boolean;
+    vpsId: number | null;
+    vpsIp: string;
+    username: string;
+    password: string;
+    showPassword: boolean;
+    mode: "view" | "edit";
+    loading: boolean;
+  }>({ open: false, vpsId: null, vpsIp: "", username: "", password: "", showPassword: false, mode: "view", loading: false });
   
   const { data: stats, isLoading, refetch, isRefetching } = useQuery<AdminStats>({
     queryKey: ["/api/admin/stats"],
+  });
+
+  const { data: liveBalance, refetch: refetchBalance } = useQuery<{ balance: number; success: boolean; error?: string }>({
+    queryKey: ["/api/admin/balance"],
+    refetchInterval: 30000,
   });
 
   const { data: onedashOrders, isLoading: onedashLoading, refetch: refetchOrders } = useQuery<OneDashOrder[]>({
@@ -164,6 +185,39 @@ export default function AdminDashboard() {
     },
   });
 
+  const updateCredentialsMutation = useMutation({
+    mutationFn: async ({ vpsId, username, password }: { vpsId: number; username: string; password: string }) => {
+      return apiRequest("PATCH", `/api/admin/vps/${vpsId}/credentials`, { username, password });
+    },
+    onSuccess: () => {
+      toast({ title: "Credentials Updated", description: "VPS credentials have been updated." });
+      setCredentialsDialog(prev => ({ ...prev, open: false, mode: "view" }));
+    },
+    onError: (error: Error) => {
+      toast({ title: "Update Failed", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const fetchCredentials = async (vpsId: number, vpsIp: string) => {
+    setCredentialsDialog({ open: true, vpsId, vpsIp, username: "", password: "", showPassword: false, mode: "view", loading: true });
+    try {
+      const response = await fetch(`/api/admin/vps/${vpsId}/credentials`, { credentials: "include" });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.message || "Failed to fetch credentials");
+      }
+      setCredentialsDialog(prev => ({
+        ...prev,
+        username: data.username || "Administrator",
+        password: data.password || "",
+        loading: false,
+      }));
+    } catch (error: any) {
+      setCredentialsDialog(prev => ({ ...prev, loading: false }));
+      toast({ title: "Error", description: error.message || "Failed to fetch credentials", variant: "destructive" });
+    }
+  };
+
   const handleAction = () => {
     if (!actionDialog.vpsId) return;
     
@@ -206,7 +260,17 @@ export default function AdminDashboard() {
       {/* OneDash Balance - Prominent */}
       <Card className="border-primary bg-primary/5">
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 gap-2">
-          <CardTitle className="text-sm font-medium">OneDash API Balance</CardTitle>
+          <div className="flex items-center gap-2">
+            <CardTitle className="text-sm font-medium">OneDash API Balance</CardTitle>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-6 w-6"
+              onClick={() => refetchBalance()}
+            >
+              <RefreshCw className="h-3 w-3" />
+            </Button>
+          </div>
           <Wallet className="h-4 w-4 text-primary" />
         </CardHeader>
         <CardContent>
@@ -215,10 +279,16 @@ export default function AdminDashboard() {
           ) : (
             <>
               <div className="text-3xl font-bold font-mono text-primary" data-testid="text-onedash-balance">
-                ${stats?.onedashBalance?.toFixed(2) || "0.00"}
+                ${(liveBalance?.balance ?? stats?.onedashBalance ?? 0).toFixed(2)}
               </div>
               <p className="text-xs text-muted-foreground mt-1">
                 Available for VPS provisioning
+                {liveBalance?.success === false && liveBalance?.error && (
+                  <span className="text-destructive ml-2">({liveBalance.error})</span>
+                )}
+              </p>
+              <p className="text-xs text-muted-foreground/60 mt-0.5">
+                Auto-refreshes every 30 seconds
               </p>
             </>
           )}
@@ -415,6 +485,12 @@ export default function AdminDashboard() {
                                     <HardDrive className="h-4 w-4 mr-2" />
                                     Reinstall OS
                                   </DropdownMenuItem>
+                                  <DropdownMenuItem
+                                    onClick={() => fetchCredentials(vps.id, ipDisplay)}
+                                  >
+                                    <Key className="h-4 w-4 mr-2" />
+                                    View Credentials
+                                  </DropdownMenuItem>
                                 </DropdownMenuContent>
                               </DropdownMenu>
                             </div>
@@ -581,6 +657,172 @@ export default function AdminDashboard() {
               {reinstallMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
               Reinstall
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Credentials Dialog */}
+      <Dialog
+        open={credentialsDialog.open}
+        onOpenChange={(open) => {
+          if (!open) {
+            setCredentialsDialog({ open: false, vpsId: null, vpsIp: "", username: "", password: "", showPassword: false, mode: "view", loading: false });
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Key className="h-5 w-5" />
+              {credentialsDialog.mode === "view" ? "VPS Credentials" : "Edit Credentials"}
+            </DialogTitle>
+            <DialogDescription>
+              {credentialsDialog.mode === "view" 
+                ? `Credentials for VPS at ${credentialsDialog.vpsIp}`
+                : "Update VPS credentials"}
+            </DialogDescription>
+          </DialogHeader>
+          {credentialsDialog.loading ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="h-6 w-6 animate-spin" />
+            </div>
+          ) : (
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label>IP Address</Label>
+                <div className="flex items-center gap-2">
+                  <div className="flex-1 p-3 bg-muted rounded-lg font-mono text-sm">
+                    {credentialsDialog.vpsIp}
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={() => {
+                      navigator.clipboard.writeText(credentialsDialog.vpsIp);
+                      toast({ title: "Copied!", description: "IP address copied to clipboard." });
+                    }}
+                  >
+                    <Copy className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label>Username</Label>
+                {credentialsDialog.mode === "view" ? (
+                  <div className="flex items-center gap-2">
+                    <div className="flex-1 p-3 bg-muted rounded-lg font-mono text-sm">
+                      {credentialsDialog.username}
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      onClick={() => {
+                        navigator.clipboard.writeText(credentialsDialog.username);
+                        toast({ title: "Copied!", description: "Username copied to clipboard." });
+                      }}
+                    >
+                      <Copy className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ) : (
+                  <Input
+                    value={credentialsDialog.username}
+                    onChange={(e) => setCredentialsDialog(prev => ({ ...prev, username: e.target.value }))}
+                    placeholder="Username"
+                  />
+                )}
+              </div>
+              <div className="space-y-2">
+                <Label>Password</Label>
+                {credentialsDialog.mode === "view" ? (
+                  <div className="flex items-center gap-2">
+                    <div className="flex-1 p-3 bg-muted rounded-lg font-mono text-sm">
+                      {credentialsDialog.showPassword 
+                        ? (credentialsDialog.password || "Not set")
+                        : (credentialsDialog.password ? "••••••••" : "Not set")}
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      onClick={() => setCredentialsDialog(prev => ({ ...prev, showPassword: !prev.showPassword }))}
+                    >
+                      {credentialsDialog.showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </Button>
+                    {credentialsDialog.password && (
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        onClick={() => {
+                          navigator.clipboard.writeText(credentialsDialog.password);
+                          toast({ title: "Copied!", description: "Password copied to clipboard." });
+                        }}
+                      >
+                        <Copy className="h-4 w-4" />
+                      </Button>
+                    )}
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <Input
+                      type={credentialsDialog.showPassword ? "text" : "password"}
+                      value={credentialsDialog.password}
+                      onChange={(e) => setCredentialsDialog(prev => ({ ...prev, password: e.target.value }))}
+                      placeholder="Password"
+                      className="flex-1"
+                    />
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      onClick={() => setCredentialsDialog(prev => ({ ...prev, showPassword: !prev.showPassword }))}
+                    >
+                      {credentialsDialog.showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </Button>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            {credentialsDialog.mode === "view" ? (
+              <>
+                <Button
+                  variant="outline"
+                  onClick={() => setCredentialsDialog(prev => ({ ...prev, mode: "edit" }))}
+                >
+                  <Edit className="h-4 w-4 mr-2" />
+                  Edit
+                </Button>
+                <Button
+                  onClick={() => setCredentialsDialog({ open: false, vpsId: null, vpsIp: "", username: "", password: "", showPassword: false, mode: "view", loading: false })}
+                >
+                  Close
+                </Button>
+              </>
+            ) : (
+              <>
+                <Button
+                  variant="outline"
+                  onClick={() => setCredentialsDialog(prev => ({ ...prev, mode: "view" }))}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={() => {
+                    if (credentialsDialog.vpsId) {
+                      updateCredentialsMutation.mutate({
+                        vpsId: credentialsDialog.vpsId,
+                        username: credentialsDialog.username,
+                        password: credentialsDialog.password,
+                      });
+                    }
+                  }}
+                  disabled={updateCredentialsMutation.isPending}
+                >
+                  {updateCredentialsMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                  Save Changes
+                </Button>
+              </>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>

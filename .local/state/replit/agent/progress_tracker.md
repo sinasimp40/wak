@@ -17,3 +17,6 @@
 [x] 17. Added VPS credentials (rdpUsername, rdpPassword) to schema with AES-256-GCM encryption at rest
 [x] 18. VPS credentials viewable and editable in VPS list page
 [x] 19. VPS credentials viewable and editable in orders page
+[x] 20. Created new admin and user accounts (admin@rdppanel.com / admin123, user@rdppanel.com / user123)
+[x] 21. Added VPS credentials view/edit to admin VPS live list (IP, username, password with change option)
+[x] 22. Added real-time OneDash balance with auto-refresh every 30 seconds and dedicated refresh button

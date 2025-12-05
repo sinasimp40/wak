@@ -515,7 +515,10 @@ export async function registerRoutes(
   app.get("/api/admin/stats", requireAuth, requireAdmin, async (req, res) => {
     try {
       const stats = await storage.getAdminStats();
-      const balance = await onedashService.getBalance().catch(() => ({ balance: 0 }));
+      const balance = await onedashService.getBalance().catch((err) => {
+        console.log("OneDash balance fetch error:", err.message);
+        return { balance: 0, error: err.message };
+      });
       const recentOrders = await storage.getAllOrders();
       const allUsers = await storage.getAllUsers();
 
@@ -538,6 +541,24 @@ export async function registerRoutes(
       });
     } catch (error: any) {
       res.status(500).json({ message: error.message || "Failed to fetch admin stats" });
+    }
+  });
+
+  app.get("/api/admin/balance", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const balance = await onedashService.getBalance();
+      res.json({ 
+        balance: balance.balance,
+        currency: balance.currency || "USD",
+        success: true,
+        timestamp: new Date().toISOString()
+      });
+    } catch (error: any) {
+      res.status(500).json({ 
+        balance: null, 
+        success: false, 
+        error: error.message || "Failed to fetch OneDash balance" 
+      });
     }
   });
 
@@ -676,6 +697,67 @@ export async function registerRoutes(
       res.json({ success: true, message: "VPS reinstall initiated" });
     } catch (error: any) {
       res.status(500).json({ message: error.message || "Failed to reinstall VPS" });
+    }
+  });
+
+  app.get("/api/admin/vps/:vpsId/credentials", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const vpsId = parseInt(req.params.vpsId);
+      if (isNaN(vpsId)) {
+        return res.status(400).json({ message: "Invalid VPS ID" });
+      }
+      
+      const vps = await storage.getVpsByOnedashId(vpsId);
+      if (!vps) {
+        return res.json({
+          username: "Administrator",
+          password: null,
+          message: "VPS not linked to local database. Credentials not stored."
+        });
+      }
+
+      res.json({
+        username: vps.rdpUsername || "Administrator",
+        password: vps.rdpPassword || null,
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message || "Failed to get VPS credentials" });
+    }
+  });
+
+  app.patch("/api/admin/vps/:vpsId/credentials", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const vpsId = parseInt(req.params.vpsId);
+      if (isNaN(vpsId)) {
+        return res.status(400).json({ message: "Invalid VPS ID" });
+      }
+      
+      const { username, password } = req.body;
+      
+      if (username !== undefined && (typeof username !== "string" || username.length > 100)) {
+        return res.status(400).json({ message: "Invalid username format" });
+      }
+      if (password !== undefined && (typeof password !== "string" || password.length > 200)) {
+        return res.status(400).json({ message: "Invalid password format" });
+      }
+      
+      const vps = await storage.getVpsByOnedashId(vpsId);
+      if (!vps) {
+        return res.status(404).json({ message: "VPS not found in local database. Please sync first." });
+      }
+
+      const updates: { rdpUsername?: string; rdpPassword?: string } = {};
+      if (username !== undefined) {
+        updates.rdpUsername = username.trim();
+      }
+      if (password !== undefined) {
+        updates.rdpPassword = password;
+      }
+
+      await storage.updateVps(vps.id, updates);
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message || "Failed to update VPS credentials" });
     }
   });
 
