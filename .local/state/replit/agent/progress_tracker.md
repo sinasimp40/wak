@@ -20,4 +20,4 @@
 [x] 20. Created new admin and user accounts (admin@rdppanel.com / admin123, user@rdppanel.com / user123)
 [x] 21. Added VPS credentials view/edit to admin VPS live list (IP, username, password with change option)
 [x] 22. Added real-time OneDash balance with auto-refresh every 30 seconds and dedicated refresh button
-[x] 23. Successfully migrated project to Replit environment - workflow running on port 5000 with webview output
+[x] 23. Created new accounts: admin@panel.com / admin123 (with $2.00 balance), user@panel.com / user123 (with $0 balance)
