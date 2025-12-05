@@ -207,6 +207,7 @@ class NowPaymentsService {
           order_id: params.orderId,
           order_description: `Balance top-up - $${params.amount}`,
           ipn_callback_url: `${params.baseUrl}/api/payments/webhook`,
+          is_fixed_rate: false,
         }),
       });
 
