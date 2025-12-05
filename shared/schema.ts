@@ -71,6 +71,8 @@ export const vpsInstances = pgTable("vps_instances", {
   onedashVpsId: integer("onedash_vps_id"),
   os: text("os").notNull(),
   ipAddress: text("ip_address"),
+  rdpUsername: text("rdp_username").default("Administrator"),
+  rdpPassword: text("rdp_password"),
   status: text("status").notNull().default("not_runned"), // "runned" | "not_runned" | "cloning"
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });

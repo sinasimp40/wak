@@ -14,6 +14,7 @@ import AuthPage from "@/pages/auth";
 import Dashboard from "@/pages/dashboard";
 import VpsList from "@/pages/vps-list";
 import Orders from "@/pages/orders";
+import Billing from "@/pages/billing";
 import CreateVps from "@/pages/create-vps";
 import Tariffs from "@/pages/tariffs";
 import NotFound from "@/pages/not-found";
@@ -126,6 +127,14 @@ function Router() {
         <ProtectedRoute>
           <AppLayout>
             <Orders />
+          </AppLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/billing">
+        <ProtectedRoute>
+          <AppLayout>
+            <Billing />
           </AppLayout>
         </ProtectedRoute>
       </Route>

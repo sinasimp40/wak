@@ -12,10 +12,10 @@ import {
   User,
   Loader2,
   Mail,
-  Globe,
   Server,
   Eye,
   History,
+  Key,
 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -91,13 +91,14 @@ export default function AdminUsers() {
   const [searchQuery, setSearchQuery] = useState("");
   const [actionDialog, setActionDialog] = useState<{
     open: boolean;
-    type: "suspend" | "activate" | "delete" | "email" | "vps" | "logs" | null;
+    type: "suspend" | "activate" | "delete" | "email" | "vps" | "logs" | "password" | null;
     userId: string | null;
     username: string | null;
     currentEmail?: string;
     vpsList?: VpsData[];
   }>({ open: false, type: null, userId: null, username: null });
   const [newEmail, setNewEmail] = useState("");
+  const [newPassword, setNewPassword] = useState("");
   const [suspendDuration, setSuspendDuration] = useState("permanent");
   const [loginLogs, setLoginLogs] = useState<LoginLogData[]>([]);
   const [logsLoading, setLogsLoading] = useState(false);
@@ -136,6 +137,21 @@ export default function AdminUsers() {
     },
   });
 
+  const updatePasswordMutation = useMutation({
+    mutationFn: async ({ userId, password }: { userId: string; password: string }) => {
+      return apiRequest("PATCH", `/api/admin/users/${userId}/password`, { password });
+    },
+    onSuccess: () => {
+      toast({ title: "Password updated", description: "User password has been updated." });
+      setActionDialog({ open: false, type: null, userId: null, username: null });
+      setNewPassword("");
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Update failed", description: error.message, variant: "destructive" });
+    },
+  });
+
   const deleteMutation = useMutation({
     mutationFn: async (userId: string) => {
       return apiRequest("DELETE", `/api/admin/users/${userId}`);
@@ -153,8 +169,7 @@ export default function AdminUsers() {
   const filteredUsers = users?.filter(
     (user) =>
       user.username.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      user.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (user.registrationIp && user.registrationIp.includes(searchQuery))
+      user.email.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   const formatDate = (dateString: string) => {
@@ -212,6 +227,8 @@ export default function AdminUsers() {
       deleteMutation.mutate(actionDialog.userId);
     } else if (actionDialog.type === "email") {
       updateEmailMutation.mutate({ userId: actionDialog.userId, email: newEmail });
+    } else if (actionDialog.type === "password") {
+      updatePasswordMutation.mutate({ userId: actionDialog.userId, password: newPassword });
     }
   };
 
@@ -324,7 +341,6 @@ export default function AdminUsers() {
                     <TableHead>User</TableHead>
                     <TableHead>Role</TableHead>
                     <TableHead>Status</TableHead>
-                    <TableHead>Registration IP</TableHead>
                     <TableHead className="text-right">Balance</TableHead>
                     <TableHead className="text-right">Orders</TableHead>
                     <TableHead className="text-right">RDP/VPS</TableHead>
@@ -357,18 +373,6 @@ export default function AdminUsers() {
                       </TableCell>
                       <TableCell>
                         {getStatusBadge(user)}
-                      </TableCell>
-                      <TableCell>
-                        {user.registrationIp ? (
-                          <div className="flex items-center gap-1 text-sm">
-                            <Globe className="h-3 w-3 text-muted-foreground" />
-                            <code className="text-xs bg-muted px-1.5 py-0.5 rounded">
-                              {user.registrationIp}
-                            </code>
-                          </div>
-                        ) : (
-                          <span className="text-muted-foreground text-sm">-</span>
-                        )}
                       </TableCell>
                       <TableCell className="text-right font-mono">
                         ${parseFloat(user.balance).toFixed(2)}
@@ -422,6 +426,20 @@ export default function AdminUsers() {
                             >
                               <Mail className="h-4 w-4 mr-2" />
                               Change Email
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => {
+                                setNewPassword("");
+                                setActionDialog({
+                                  open: true,
+                                  type: "password",
+                                  userId: user.id,
+                                  username: user.username,
+                                });
+                              }}
+                            >
+                              <Key className="h-4 w-4 mr-2" />
+                              Change Password
                             </DropdownMenuItem>
                             {user.vpsList && user.vpsList.length > 0 && (
                               <DropdownMenuItem
@@ -531,7 +549,7 @@ export default function AdminUsers() {
 
       {/* Action Confirmation Dialog */}
       <Dialog
-        open={actionDialog.open && actionDialog.type !== "vps" && actionDialog.type !== "email"}
+        open={actionDialog.open && actionDialog.type !== "vps" && actionDialog.type !== "email" && actionDialog.type !== "password" && actionDialog.type !== "logs"}
         onOpenChange={(open) => {
           if (!open) {
             setActionDialog({ open: false, type: null, userId: null, username: null });
@@ -649,6 +667,64 @@ export default function AdminUsers() {
                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />
               )}
               Update Email
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Password Change Dialog */}
+      <Dialog
+        open={actionDialog.open && actionDialog.type === "password"}
+        onOpenChange={(open) => {
+          if (!open) {
+            setActionDialog({ open: false, type: null, userId: null, username: null });
+            setNewPassword("");
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Key className="h-5 w-5" />
+              Change Password
+            </DialogTitle>
+            <DialogDescription>
+              Set a new password for {actionDialog.username}.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="password">New Password</Label>
+              <Input
+                id="password"
+                type="password"
+                placeholder="Enter new password"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">
+                Password must be at least 6 characters long.
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setActionDialog({ open: false, type: null, userId: null, username: null });
+                setNewPassword("");
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleAction}
+              disabled={updatePasswordMutation.isPending || newPassword.length < 6}
+            >
+              {updatePasswordMutation.isPending && (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              )}
+              Update Password
             </Button>
           </DialogFooter>
         </DialogContent>

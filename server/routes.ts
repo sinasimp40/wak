@@ -310,6 +310,46 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/vps/:id/credentials", requireAuth, async (req, res) => {
+    try {
+      const vps = await storage.getVpsById(req.params.id);
+      if (!vps || vps.userId !== req.user.id) {
+        return res.status(404).json({ message: "VPS not found" });
+      }
+
+      res.json({
+        username: vps.rdpUsername || "Administrator",
+        password: vps.rdpPassword || null,
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message || "Failed to get credentials" });
+    }
+  });
+
+  app.patch("/api/vps/:id/credentials", requireAuth, async (req, res) => {
+    try {
+      const vps = await storage.getVpsById(req.params.id);
+      if (!vps || vps.userId !== req.user.id) {
+        return res.status(404).json({ message: "VPS not found" });
+      }
+
+      const { username, password } = req.body;
+      
+      const updates: { rdpUsername?: string; rdpPassword?: string } = {};
+      if (username !== undefined) {
+        updates.rdpUsername = username;
+      }
+      if (password !== undefined) {
+        updates.rdpPassword = password;
+      }
+
+      await storage.updateVps(vps.id, updates);
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message || "Failed to update credentials" });
+    }
+  });
+
   app.get("/api/orders", requireAuth, async (req, res) => {
     try {
       const ordersList = await storage.getOrdersByUserId(req.user.id);
@@ -582,6 +622,21 @@ export async function registerRoutes(
       res.json({ success: true });
     } catch (error: any) {
       res.status(500).json({ message: error.message || "Failed to delete user" });
+    }
+  });
+
+  app.patch("/api/admin/users/:id/password", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const { password } = req.body;
+      if (!password || typeof password !== "string" || password.length < 6) {
+        return res.status(400).json({ message: "Password must be at least 6 characters" });
+      }
+
+      const hashedPassword = await bcrypt.hash(password, 10);
+      await storage.updateUserPassword(req.params.id, hashedPassword);
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message || "Failed to update user password" });
     }
   });
 

@@ -10,6 +10,10 @@ import {
   Loader2,
   Search,
   RefreshCw,
+  Eye,
+  EyeOff,
+  Key,
+  Edit,
 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -37,6 +41,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Label } from "@/components/ui/label";
 import { StatusBadge, LocationBadge } from "@/components/status-badge";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -52,6 +57,8 @@ interface VpsInstance {
   tariffName: string;
   finishDate: string | null;
   daysRemaining: number | null;
+  rdpUsername: string | null;
+  rdpPassword: string | null;
 }
 
 export default function VpsList() {
@@ -62,6 +69,21 @@ export default function VpsList() {
     vpsId: null,
   });
   const [selectedOs, setSelectedOs] = useState("");
+  const [credentialsDialog, setCredentialsDialog] = useState<{ 
+    open: boolean; 
+    vpsId: string | null;
+    username: string;
+    password: string;
+    showPassword: boolean;
+    mode: "view" | "edit";
+  }>({
+    open: false,
+    vpsId: null,
+    username: "",
+    password: "",
+    showPassword: false,
+    mode: "view",
+  });
 
   const { data: vpsList, isLoading, refetch, isRefetching } = useQuery<VpsInstance[]>({
     queryKey: ["/api/vps"],
@@ -95,6 +117,20 @@ export default function VpsList() {
     },
     onError: (error: Error) => {
       toast({ title: "Reinstall failed", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const updateCredentialsMutation = useMutation({
+    mutationFn: async ({ vpsId, username, password }: { vpsId: string; username: string; password: string }) => {
+      return apiRequest("PATCH", `/api/vps/${vpsId}/credentials`, { username, password });
+    },
+    onSuccess: () => {
+      toast({ title: "Credentials updated", description: "VPS credentials have been updated." });
+      setCredentialsDialog({ open: false, vpsId: null, username: "", password: "", showPassword: false, mode: "view" });
+      queryClient.invalidateQueries({ queryKey: ["/api/vps"] });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Update failed", description: error.message, variant: "destructive" });
     },
   });
 
@@ -247,6 +283,22 @@ export default function VpsList() {
                         <HardDrive className="h-4 w-4 mr-2" />
                         Reinstall OS
                       </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onClick={() => {
+                          setCredentialsDialog({
+                            open: true,
+                            vpsId: vps.id,
+                            username: vps.rdpUsername || "Administrator",
+                            password: vps.rdpPassword || "",
+                            showPassword: false,
+                            mode: "view",
+                          });
+                        }}
+                        data-testid={`menu-credentials-${vps.id}`}
+                      >
+                        <Key className="h-4 w-4 mr-2" />
+                        View Credentials
+                      </DropdownMenuItem>
                       <DropdownMenuSeparator />
                       {vps.ipAddress && (
                         <DropdownMenuItem
@@ -325,6 +377,148 @@ export default function VpsList() {
               ) : null}
               Reinstall
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Credentials Dialog */}
+      <Dialog
+        open={credentialsDialog.open}
+        onOpenChange={(open) => {
+          if (!open) {
+            setCredentialsDialog({ open: false, vpsId: null, username: "", password: "", showPassword: false, mode: "view" });
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Key className="h-5 w-5" />
+              {credentialsDialog.mode === "view" ? "VPS Credentials" : "Edit Credentials"}
+            </DialogTitle>
+            <DialogDescription>
+              {credentialsDialog.mode === "view" 
+                ? "View your RDP login credentials for this VPS."
+                : "Update your RDP login credentials."}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>Username</Label>
+              {credentialsDialog.mode === "view" ? (
+                <div className="flex items-center gap-2">
+                  <div className="flex-1 p-3 bg-muted rounded-lg font-mono text-sm">
+                    {credentialsDialog.username}
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={() => {
+                      navigator.clipboard.writeText(credentialsDialog.username);
+                      toast({ title: "Copied!", description: "Username copied to clipboard." });
+                    }}
+                  >
+                    <Copy className="h-4 w-4" />
+                  </Button>
+                </div>
+              ) : (
+                <Input
+                  value={credentialsDialog.username}
+                  onChange={(e) => setCredentialsDialog(prev => ({ ...prev, username: e.target.value }))}
+                  placeholder="Username"
+                />
+              )}
+            </div>
+            <div className="space-y-2">
+              <Label>Password</Label>
+              {credentialsDialog.mode === "view" ? (
+                <div className="flex items-center gap-2">
+                  <div className="flex-1 p-3 bg-muted rounded-lg font-mono text-sm">
+                    {credentialsDialog.showPassword 
+                      ? (credentialsDialog.password || "Not set")
+                      : (credentialsDialog.password ? "••••••••" : "Not set")}
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={() => setCredentialsDialog(prev => ({ ...prev, showPassword: !prev.showPassword }))}
+                  >
+                    {credentialsDialog.showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </Button>
+                  {credentialsDialog.password && (
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      onClick={() => {
+                        navigator.clipboard.writeText(credentialsDialog.password);
+                        toast({ title: "Copied!", description: "Password copied to clipboard." });
+                      }}
+                    >
+                      <Copy className="h-4 w-4" />
+                    </Button>
+                  )}
+                </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <Input
+                    type={credentialsDialog.showPassword ? "text" : "password"}
+                    value={credentialsDialog.password}
+                    onChange={(e) => setCredentialsDialog(prev => ({ ...prev, password: e.target.value }))}
+                    placeholder="Password"
+                    className="flex-1"
+                  />
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={() => setCredentialsDialog(prev => ({ ...prev, showPassword: !prev.showPassword }))}
+                  >
+                    {credentialsDialog.showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </Button>
+                </div>
+              )}
+            </div>
+          </div>
+          <DialogFooter>
+            {credentialsDialog.mode === "view" ? (
+              <>
+                <Button
+                  variant="outline"
+                  onClick={() => setCredentialsDialog(prev => ({ ...prev, mode: "edit" }))}
+                >
+                  <Edit className="h-4 w-4 mr-2" />
+                  Edit
+                </Button>
+                <Button
+                  onClick={() => setCredentialsDialog({ open: false, vpsId: null, username: "", password: "", showPassword: false, mode: "view" })}
+                >
+                  Close
+                </Button>
+              </>
+            ) : (
+              <>
+                <Button
+                  variant="outline"
+                  onClick={() => setCredentialsDialog(prev => ({ ...prev, mode: "view" }))}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={() => {
+                    if (credentialsDialog.vpsId) {
+                      updateCredentialsMutation.mutate({
+                        vpsId: credentialsDialog.vpsId,
+                        username: credentialsDialog.username,
+                        password: credentialsDialog.password,
+                      });
+                    }
+                  }}
+                  disabled={updateCredentialsMutation.isPending}
+                >
+                  {updateCredentialsMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                  Save Changes
+                </Button>
+              </>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>

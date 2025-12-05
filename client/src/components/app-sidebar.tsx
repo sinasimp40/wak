@@ -10,6 +10,7 @@ import {
   LogOut,
   Wallet,
   Package,
+  Receipt,
 } from "lucide-react";
 import {
   Sidebar,
@@ -32,6 +33,7 @@ const customerMenuItems = [
   { title: "Dashboard", url: "/", icon: LayoutDashboard },
   { title: "My VPS", url: "/vps", icon: Server },
   { title: "Orders", url: "/orders", icon: ShoppingCart },
+  { title: "Billing", url: "/billing", icon: Receipt },
   { title: "Create VPS", url: "/create", icon: Plus },
   { title: "Tariffs", url: "/tariffs", icon: Package },
 ];
