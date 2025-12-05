@@ -1,6 +1,6 @@
 import { eq, and, desc, sql } from "drizzle-orm";
-import { drizzle } from "drizzle-orm/neon-http";
-import { neon } from "@neondatabase/serverless";
+import { drizzle } from "drizzle-orm/node-postgres";
+import pg from "pg";
 import { 
   users, 
   orders, 
@@ -24,8 +24,10 @@ import {
 import { randomBytes } from "crypto";
 import bcrypt from "bcryptjs";
 
-const sql_client = neon(process.env.DATABASE_URL!);
-const db = drizzle(sql_client);
+const pool = new pg.Pool({
+  connectionString: process.env.DATABASE_URL,
+});
+const db = drizzle(pool);
 
 export interface IStorage {
   // Users
@@ -323,8 +325,13 @@ export class DatabaseStorage implements IStorage {
 
   // Platform Settings
   async getSetting(key: string): Promise<string | null> {
-    const result = await db.select().from(platformSettings).where(eq(platformSettings.key, key)).limit(1);
-    return result[0]?.value || null;
+    try {
+      const result = await db.select().from(platformSettings).where(eq(platformSettings.key, key)).limit(1);
+      return result[0]?.value || null;
+    } catch (error) {
+      console.error("getSetting error:", error);
+      return null;
+    }
   }
 
   async getAllSettings(): Promise<PlatformSetting[]> {
@@ -332,14 +339,19 @@ export class DatabaseStorage implements IStorage {
   }
 
   async upsertSetting(key: string, value: string, description?: string): Promise<void> {
-    const existing = await db.select().from(platformSettings).where(eq(platformSettings.key, key)).limit(1);
-    
-    if (existing.length > 0) {
-      await db.update(platformSettings)
-        .set({ value, description, updatedAt: new Date() })
-        .where(eq(platformSettings.key, key));
-    } else {
-      await db.insert(platformSettings).values({ key, value, description });
+    try {
+      const existing = await db.select().from(platformSettings).where(eq(platformSettings.key, key)).limit(1);
+      
+      if (existing && existing.length > 0) {
+        await db.update(platformSettings)
+          .set({ value, description, updatedAt: new Date() })
+          .where(eq(platformSettings.key, key));
+      } else {
+        await db.insert(platformSettings).values({ key, value, description });
+      }
+    } catch (error) {
+      console.error("upsertSetting error:", error);
+      throw error;
     }
   }
 
