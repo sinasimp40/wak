@@ -2,7 +2,7 @@ import type { Express, Request, Response, NextFunction } from "express";
 import { type Server } from "http";
 import { storage } from "./storage";
 import { onedashService } from "./onedash";
-import { maxelpayService } from "./maxelpay";
+import { nowpaymentsService } from "./nowpayments";
 import { insertUserSchema, loginSchema, createVpsRequestSchema } from "@shared/schema";
 import bcrypt from "bcryptjs";
 import { randomBytes, createHash } from "crypto";
@@ -725,8 +725,7 @@ export async function registerRoutes(
   app.get("/api/admin/api-keys-status", requireAuth, requireAdmin, async (req, res) => {
     try {
       const onedashKey = await storage.getSetting("ONEDASH_API_KEY") || process.env.ONEDASH_API_KEY;
-      const maxelpayKey = await storage.getSetting("MAXELPAY_API_KEY") || process.env.MAXELPAY_API_KEY;
-      const maxelpaySecret = await storage.getSetting("MAXELPAY_API_SECRET") || process.env.MAXELPAY_API_SECRET;
+      const nowpaymentsKey = await storage.getSetting("NOWPAYMENTS_API_KEY") || process.env.NOWPAYMENTS_API_KEY;
 
       res.json({
         onedash: {
@@ -735,11 +734,10 @@ export async function registerRoutes(
             ? `${onedashKey.substring(0, 4)}...${onedashKey.slice(-4)}`
             : null,
         },
-        maxelpay: {
-          apiKeyConfigured: !!maxelpayKey,
-          secretConfigured: !!maxelpaySecret,
-          keyPreview: maxelpayKey
-            ? `${maxelpayKey.substring(0, 4)}...${maxelpayKey.slice(-4)}`
+        nowpayments: {
+          configured: !!nowpaymentsKey,
+          keyPreview: nowpaymentsKey
+            ? `${nowpaymentsKey.substring(0, 4)}...${nowpaymentsKey.slice(-4)}`
             : null,
         },
       });
@@ -752,7 +750,7 @@ export async function registerRoutes(
     try {
       const { key, value } = req.body;
       
-      const allowedKeys = ["ONEDASH_API_KEY", "MAXELPAY_API_KEY", "MAXELPAY_API_SECRET"];
+      const allowedKeys = ["ONEDASH_API_KEY", "NOWPAYMENTS_API_KEY"];
       if (!allowedKeys.includes(key)) {
         return res.status(400).json({ message: "Invalid setting key" });
       }
@@ -772,7 +770,7 @@ export async function registerRoutes(
     try {
       const { key } = req.params;
       
-      const allowedKeys = ["ONEDASH_API_KEY", "MAXELPAY_API_KEY", "MAXELPAY_API_SECRET"];
+      const allowedKeys = ["ONEDASH_API_KEY", "NOWPAYMENTS_API_KEY"];
       if (!allowedKeys.includes(key)) {
         return res.status(400).json({ message: "Invalid setting key" });
       }
@@ -870,12 +868,12 @@ export async function registerRoutes(
         amount: amount.toString(),
         currency,
         status: "pending",
-        paymentMethod: "maxelpay",
+        paymentMethod: "nowpayments",
       });
 
       const baseUrl = `${req.protocol}://${req.get("host")}`;
       
-      const result = await maxelpayService.createPayment({
+      const result = await nowpaymentsService.createPayment({
         orderId: transaction.id,
         amount,
         currency,
@@ -900,25 +898,24 @@ export async function registerRoutes(
 
   app.post("/api/payments/webhook", async (req, res) => {
     try {
-      const signature = req.headers["x-signature"] as string;
-      const payload = JSON.stringify(req.body);
+      const signature = req.headers["x-nowpayments-sig"] as string;
 
-      if (!(await maxelpayService.verifyWebhook(payload, signature || ""))) {
+      if (!(await nowpaymentsService.verifyWebhook(req.body, signature || ""))) {
         return res.status(400).json({ message: "Invalid signature" });
       }
 
-      const { orderID, status, amount } = req.body;
+      const { order_id, payment_status, price_amount } = req.body;
       
-      const transaction = await storage.getTransactionById(orderID);
+      const transaction = await storage.getTransactionById(order_id);
       if (!transaction) {
         return res.status(404).json({ message: "Transaction not found" });
       }
 
-      if (status === "completed" || status === "success") {
+      if (payment_status === "finished" || payment_status === "confirmed") {
         await storage.updateTransaction(transaction.id, { status: "completed" });
-        await storage.addToUserBalance(transaction.userId, parseFloat(amount || transaction.amount?.toString() || "0"));
-      } else if (status === "failed" || status === "cancelled") {
-        await storage.updateTransaction(transaction.id, { status: status });
+        await storage.addToUserBalance(transaction.userId, parseFloat(price_amount || transaction.amount?.toString() || "0"));
+      } else if (payment_status === "failed" || payment_status === "expired" || payment_status === "refunded") {
+        await storage.updateTransaction(transaction.id, { status: payment_status });
       }
 
       res.json({ success: true });

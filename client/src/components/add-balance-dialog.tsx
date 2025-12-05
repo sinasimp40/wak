@@ -103,7 +103,7 @@ export function AddBalanceDialog() {
             <div>
               <h2 className="text-lg font-semibold">Complete Payment</h2>
               <p className="text-sm text-muted-foreground">
-                Paying ${amount} USD via MaxelPay
+                Paying ${amount} USD via NOWPayments
               </p>
             </div>
             <Button variant="ghost" size="icon" onClick={handleClosePayment}>
@@ -115,7 +115,7 @@ export function AddBalanceDialog() {
               src={paymentUrl}
               className="w-full h-full border-0"
               style={{ minHeight: "550px" }}
-              title="MaxelPay Payment"
+              title="NOWPayments Payment"
               allow="payment"
             />
           </div>
@@ -139,7 +139,7 @@ export function AddBalanceDialog() {
             Add Balance
           </DialogTitle>
           <DialogDescription>
-            Add funds to your account using cryptocurrency via MaxelPay.
+            Add funds to your account using cryptocurrency via NOWPayments.
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit}>
