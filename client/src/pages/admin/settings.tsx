@@ -1,4 +1,5 @@
-import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { 
   Settings, 
   CheckCircle, 
@@ -10,12 +11,19 @@ import {
   Shield,
   AlertCircle,
   CreditCard,
+  Save,
+  Loader2,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { useToast } from "@/hooks/use-toast";
 
 interface ApiHealthCheck {
   status: "connected" | "error";
@@ -43,6 +51,16 @@ interface SystemInfo {
 }
 
 export default function AdminSettings() {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  
+  const [onedashKey, setOnedashKey] = useState("");
+  const [maxelpayKey, setMaxelpayKey] = useState("");
+  const [maxelpaySecret, setMaxelpaySecret] = useState("");
+  const [showOnedashKey, setShowOnedashKey] = useState(false);
+  const [showMaxelpayKey, setShowMaxelpayKey] = useState(false);
+  const [showMaxelpaySecret, setShowMaxelpaySecret] = useState(false);
+
   const { data: apiHealth, isLoading: healthLoading, refetch, isRefetching } = useQuery<ApiHealthCheck>({
     queryKey: ["/api/admin/health"],
     refetchInterval: 60000,
@@ -50,6 +68,40 @@ export default function AdminSettings() {
 
   const { data: apiKeysStatus, isLoading: keysLoading, refetch: refetchKeys } = useQuery<ApiKeysStatus>({
     queryKey: ["/api/admin/api-keys-status"],
+  });
+
+  const updateKeyMutation = useMutation({
+    mutationFn: async ({ key, value }: { key: string; value: string }) => {
+      const response = await fetch("/api/admin/api-keys", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ key, value }),
+        credentials: "include",
+      });
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || "Failed to update API key");
+      }
+      return response.json();
+    },
+    onSuccess: (_, variables) => {
+      toast({
+        title: "API Key Updated",
+        description: `${variables.key} has been saved successfully.`,
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/api-keys-status"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/health"] });
+      if (variables.key === "ONEDASH_API_KEY") setOnedashKey("");
+      if (variables.key === "MAXELPAY_API_KEY") setMaxelpayKey("");
+      if (variables.key === "MAXELPAY_API_SECRET") setMaxelpaySecret("");
+    },
+    onError: (error: Error) => {
+      toast({
+        variant: "destructive",
+        title: "Update Failed",
+        description: error.message,
+      });
+    },
   });
 
   const systemInfo: SystemInfo = {
@@ -63,13 +115,31 @@ export default function AdminSettings() {
     refetchKeys();
   };
 
+  const handleSaveOnedash = () => {
+    if (onedashKey.trim()) {
+      updateKeyMutation.mutate({ key: "ONEDASH_API_KEY", value: onedashKey });
+    }
+  };
+
+  const handleSaveMaxelpayKey = () => {
+    if (maxelpayKey.trim()) {
+      updateKeyMutation.mutate({ key: "MAXELPAY_API_KEY", value: maxelpayKey });
+    }
+  };
+
+  const handleSaveMaxelpaySecret = () => {
+    if (maxelpaySecret.trim()) {
+      updateKeyMutation.mutate({ key: "MAXELPAY_API_SECRET", value: maxelpaySecret });
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
           <h1 className="text-3xl font-semibold">Settings</h1>
           <p className="text-muted-foreground mt-1">
-            Platform configuration and API health
+            Platform configuration and API management
           </p>
         </div>
         <Button
@@ -91,7 +161,7 @@ export default function AdminSettings() {
             API Keys Configuration
           </CardTitle>
           <CardDescription>
-            Manage your OneDash and MaxelPay API credentials. Update keys in the Secrets tab.
+            Configure your OneDash and MaxelPay API credentials
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -99,118 +169,204 @@ export default function AdminSettings() {
             <div className="space-y-4">
               <Skeleton className="h-20 w-full" />
               <Skeleton className="h-20 w-full" />
+              <Skeleton className="h-20 w-full" />
             </div>
           ) : (
-            <div className="space-y-4">
+            <div className="space-y-6">
               {/* OneDash API Key */}
-              <div className="flex items-center justify-between p-4 rounded-lg border">
-                <div className="flex items-center gap-4">
-                  {apiKeysStatus?.onedash.configured ? (
-                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-500/10">
-                      <CheckCircle className="h-5 w-5 text-emerald-500" />
-                    </div>
-                  ) : (
-                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-amber-500/10">
-                      <AlertCircle className="h-5 w-5 text-amber-500" />
-                    </div>
-                  )}
-                  <div>
-                    <div className="font-medium">OneDash API Key</div>
-                    <div className="text-sm text-muted-foreground">
-                      {apiKeysStatus?.onedash.configured
-                        ? `Configured: ${apiKeysStatus.onedash.keyPreview}`
-                        : "Not configured - Set ONEDASH_API_KEY in Secrets"}
+              <div className="p-4 rounded-lg border space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    {apiKeysStatus?.onedash.configured ? (
+                      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-500/10">
+                        <CheckCircle className="h-5 w-5 text-emerald-500" />
+                      </div>
+                    ) : (
+                      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-amber-500/10">
+                        <AlertCircle className="h-5 w-5 text-amber-500" />
+                      </div>
+                    )}
+                    <div>
+                      <div className="font-medium">OneDash API Key</div>
+                      <div className="text-sm text-muted-foreground">
+                        {apiKeysStatus?.onedash.configured
+                          ? `Current: ${apiKeysStatus.onedash.keyPreview}`
+                          : "Not configured"}
+                      </div>
                     </div>
                   </div>
+                  <Badge
+                    variant="outline"
+                    className={
+                      apiKeysStatus?.onedash.configured
+                        ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/20"
+                        : "bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/20"
+                    }
+                  >
+                    {apiKeysStatus?.onedash.configured ? "Configured" : "Missing"}
+                  </Badge>
                 </div>
-                <Badge
-                  variant="outline"
-                  className={
-                    apiKeysStatus?.onedash.configured
-                      ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/20"
-                      : "bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/20"
-                  }
-                >
-                  {apiKeysStatus?.onedash.configured ? "Configured" : "Missing"}
-                </Badge>
+                <div className="flex gap-2">
+                  <div className="relative flex-1">
+                    <Input
+                      type={showOnedashKey ? "text" : "password"}
+                      placeholder="Enter OneDash API Key"
+                      value={onedashKey}
+                      onChange={(e) => setOnedashKey(e.target.value)}
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="absolute right-0 top-0 h-full px-3"
+                      onClick={() => setShowOnedashKey(!showOnedashKey)}
+                    >
+                      {showOnedashKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </Button>
+                  </div>
+                  <Button
+                    onClick={handleSaveOnedash}
+                    disabled={!onedashKey.trim() || updateKeyMutation.isPending}
+                  >
+                    {updateKeyMutation.isPending ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Save className="h-4 w-4" />
+                    )}
+                    <span className="ml-2">Save</span>
+                  </Button>
+                </div>
               </div>
 
               {/* MaxelPay API Key */}
-              <div className="flex items-center justify-between p-4 rounded-lg border">
-                <div className="flex items-center gap-4">
-                  {apiKeysStatus?.maxelpay.apiKeyConfigured ? (
-                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-500/10">
-                      <CreditCard className="h-5 w-5 text-emerald-500" />
-                    </div>
-                  ) : (
-                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-amber-500/10">
-                      <CreditCard className="h-5 w-5 text-amber-500" />
-                    </div>
-                  )}
-                  <div>
-                    <div className="font-medium">MaxelPay API Key</div>
-                    <div className="text-sm text-muted-foreground">
-                      {apiKeysStatus?.maxelpay.apiKeyConfigured
-                        ? `Configured: ${apiKeysStatus.maxelpay.keyPreview}`
-                        : "Not configured - Set MAXELPAY_API_KEY in Secrets"}
+              <div className="p-4 rounded-lg border space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    {apiKeysStatus?.maxelpay.apiKeyConfigured ? (
+                      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-500/10">
+                        <CreditCard className="h-5 w-5 text-emerald-500" />
+                      </div>
+                    ) : (
+                      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-amber-500/10">
+                        <CreditCard className="h-5 w-5 text-amber-500" />
+                      </div>
+                    )}
+                    <div>
+                      <div className="font-medium">MaxelPay API Key</div>
+                      <div className="text-sm text-muted-foreground">
+                        {apiKeysStatus?.maxelpay.apiKeyConfigured
+                          ? `Current: ${apiKeysStatus.maxelpay.keyPreview}`
+                          : "Not configured"}
+                      </div>
                     </div>
                   </div>
+                  <Badge
+                    variant="outline"
+                    className={
+                      apiKeysStatus?.maxelpay.apiKeyConfigured
+                        ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/20"
+                        : "bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/20"
+                    }
+                  >
+                    {apiKeysStatus?.maxelpay.apiKeyConfigured ? "Configured" : "Missing"}
+                  </Badge>
                 </div>
-                <Badge
-                  variant="outline"
-                  className={
-                    apiKeysStatus?.maxelpay.apiKeyConfigured
-                      ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/20"
-                      : "bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/20"
-                  }
-                >
-                  {apiKeysStatus?.maxelpay.apiKeyConfigured ? "Configured" : "Missing"}
-                </Badge>
+                <div className="flex gap-2">
+                  <div className="relative flex-1">
+                    <Input
+                      type={showMaxelpayKey ? "text" : "password"}
+                      placeholder="Enter MaxelPay API Key"
+                      value={maxelpayKey}
+                      onChange={(e) => setMaxelpayKey(e.target.value)}
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="absolute right-0 top-0 h-full px-3"
+                      onClick={() => setShowMaxelpayKey(!showMaxelpayKey)}
+                    >
+                      {showMaxelpayKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </Button>
+                  </div>
+                  <Button
+                    onClick={handleSaveMaxelpayKey}
+                    disabled={!maxelpayKey.trim() || updateKeyMutation.isPending}
+                  >
+                    {updateKeyMutation.isPending ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Save className="h-4 w-4" />
+                    )}
+                    <span className="ml-2">Save</span>
+                  </Button>
+                </div>
               </div>
 
               {/* MaxelPay Secret */}
-              <div className="flex items-center justify-between p-4 rounded-lg border">
-                <div className="flex items-center gap-4">
-                  {apiKeysStatus?.maxelpay.secretConfigured ? (
-                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-500/10">
-                      <Shield className="h-5 w-5 text-emerald-500" />
-                    </div>
-                  ) : (
-                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-amber-500/10">
-                      <Shield className="h-5 w-5 text-amber-500" />
-                    </div>
-                  )}
-                  <div>
-                    <div className="font-medium">MaxelPay API Secret</div>
-                    <div className="text-sm text-muted-foreground">
-                      {apiKeysStatus?.maxelpay.secretConfigured
-                        ? "Secret is configured"
-                        : "Not configured - Set MAXELPAY_API_SECRET in Secrets"}
+              <div className="p-4 rounded-lg border space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    {apiKeysStatus?.maxelpay.secretConfigured ? (
+                      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-500/10">
+                        <Shield className="h-5 w-5 text-emerald-500" />
+                      </div>
+                    ) : (
+                      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-amber-500/10">
+                        <Shield className="h-5 w-5 text-amber-500" />
+                      </div>
+                    )}
+                    <div>
+                      <div className="font-medium">MaxelPay API Secret</div>
+                      <div className="text-sm text-muted-foreground">
+                        {apiKeysStatus?.maxelpay.secretConfigured
+                          ? "Secret is configured"
+                          : "Not configured"}
+                      </div>
                     </div>
                   </div>
+                  <Badge
+                    variant="outline"
+                    className={
+                      apiKeysStatus?.maxelpay.secretConfigured
+                        ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/20"
+                        : "bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/20"
+                    }
+                  >
+                    {apiKeysStatus?.maxelpay.secretConfigured ? "Configured" : "Missing"}
+                  </Badge>
                 </div>
-                <Badge
-                  variant="outline"
-                  className={
-                    apiKeysStatus?.maxelpay.secretConfigured
-                      ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/20"
-                      : "bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/20"
-                  }
-                >
-                  {apiKeysStatus?.maxelpay.secretConfigured ? "Configured" : "Missing"}
-                </Badge>
+                <div className="flex gap-2">
+                  <div className="relative flex-1">
+                    <Input
+                      type={showMaxelpaySecret ? "text" : "password"}
+                      placeholder="Enter MaxelPay API Secret"
+                      value={maxelpaySecret}
+                      onChange={(e) => setMaxelpaySecret(e.target.value)}
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="absolute right-0 top-0 h-full px-3"
+                      onClick={() => setShowMaxelpaySecret(!showMaxelpaySecret)}
+                    >
+                      {showMaxelpaySecret ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </Button>
+                  </div>
+                  <Button
+                    onClick={handleSaveMaxelpaySecret}
+                    disabled={!maxelpaySecret.trim() || updateKeyMutation.isPending}
+                  >
+                    {updateKeyMutation.isPending ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Save className="h-4 w-4" />
+                    )}
+                    <span className="ml-2">Save</span>
+                  </Button>
+                </div>
               </div>
-
-              {(!apiKeysStatus?.onedash.configured || !apiKeysStatus?.maxelpay.apiKeyConfigured || !apiKeysStatus?.maxelpay.secretConfigured) && (
-                <Alert>
-                  <AlertCircle className="h-4 w-4" />
-                  <AlertTitle>Action Required</AlertTitle>
-                  <AlertDescription>
-                    Some API keys are missing. Go to the Secrets tab in your Replit workspace to configure them.
-                    Required keys: ONEDASH_API_KEY, MAXELPAY_API_KEY, MAXELPAY_API_SECRET
-                  </AlertDescription>
-                </Alert>
-              )}
             </div>
           )}
         </CardContent>

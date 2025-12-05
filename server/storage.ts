@@ -8,6 +8,7 @@ import {
   pricingRules, 
   sessions,
   transactions,
+  platformSettings,
   type User, 
   type InsertUser,
   type Order,
@@ -18,6 +19,7 @@ import {
   type InsertPricingRule,
   type Transaction,
   type InsertTransaction,
+  type PlatformSetting,
 } from "@shared/schema";
 import { randomBytes } from "crypto";
 import bcrypt from "bcryptjs";
@@ -317,6 +319,32 @@ export class DatabaseStorage implements IStorage {
       const newBalance = (currentBalance + amount).toFixed(2);
       await this.updateUserBalance(userId, newBalance);
     }
+  }
+
+  // Platform Settings
+  async getSetting(key: string): Promise<string | null> {
+    const result = await db.select().from(platformSettings).where(eq(platformSettings.key, key)).limit(1);
+    return result[0]?.value || null;
+  }
+
+  async getAllSettings(): Promise<PlatformSetting[]> {
+    return db.select().from(platformSettings);
+  }
+
+  async upsertSetting(key: string, value: string, description?: string): Promise<void> {
+    const existing = await db.select().from(platformSettings).where(eq(platformSettings.key, key)).limit(1);
+    
+    if (existing.length > 0) {
+      await db.update(platformSettings)
+        .set({ value, description, updatedAt: new Date() })
+        .where(eq(platformSettings.key, key));
+    } else {
+      await db.insert(platformSettings).values({ key, value, description });
+    }
+  }
+
+  async deleteSetting(key: string): Promise<void> {
+    await db.delete(platformSettings).where(eq(platformSettings.key, key));
   }
 }
 

@@ -1,4 +1,5 @@
 import { createHash, createHmac } from "crypto";
+import { storage } from "./storage";
 
 const MAXELPAY_API_URL = "https://api.maxelpay.com/api/v1";
 
@@ -23,24 +24,27 @@ interface PaymentResponse {
 }
 
 class MaxelPayService {
-  private getApiKey(): string {
-    const apiKey = process.env.MAXELPAY_API_KEY;
+  private async getApiKey(): Promise<string> {
+    const dbKey = await storage.getSetting("MAXELPAY_API_KEY");
+    const apiKey = dbKey || process.env.MAXELPAY_API_KEY;
     if (!apiKey) {
-      throw new Error("MaxelPay API key not configured. Please set MAXELPAY_API_KEY in Secrets.");
+      throw new Error("MaxelPay API key not configured. Please set it in Admin Settings.");
     }
     return apiKey;
   }
 
-  private getApiSecret(): string {
-    const apiSecret = process.env.MAXELPAY_API_SECRET;
+  private async getApiSecret(): Promise<string> {
+    const dbSecret = await storage.getSetting("MAXELPAY_API_SECRET");
+    const apiSecret = dbSecret || process.env.MAXELPAY_API_SECRET;
     if (!apiSecret) {
-      throw new Error("MaxelPay API secret not configured. Please set MAXELPAY_API_SECRET in Secrets.");
+      throw new Error("MaxelPay API secret not configured. Please set it in Admin Settings.");
     }
     return apiSecret;
   }
 
-  private generateSignature(payload: string): string {
-    return createHmac("sha256", this.getApiSecret())
+  private async generateSignature(payload: string): Promise<string> {
+    const secret = await this.getApiSecret();
+    return createHmac("sha256", secret)
       .update(payload)
       .digest("hex");
   }
@@ -68,14 +72,15 @@ class MaxelPayService {
     };
 
     const payloadString = JSON.stringify(payload);
-    const signature = this.generateSignature(payloadString);
+    const signature = await this.generateSignature(payloadString);
+    const apiKey = await this.getApiKey();
 
     try {
       const response = await fetch(`${MAXELPAY_API_URL}/payment/create`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "X-API-Key": this.getApiKey(),
+          "X-API-Key": apiKey,
           "X-Signature": signature,
         },
         body: payloadString,
@@ -102,8 +107,8 @@ class MaxelPayService {
     }
   }
 
-  verifyWebhook(payload: string, signature: string): boolean {
-    const expectedSignature = this.generateSignature(payload);
+  async verifyWebhook(payload: string, signature: string): Promise<boolean> {
+    const expectedSignature = await this.generateSignature(payload);
     return expectedSignature === signature;
   }
 }

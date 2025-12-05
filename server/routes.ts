@@ -618,23 +618,63 @@ export async function registerRoutes(
 
   app.get("/api/admin/api-keys-status", requireAuth, requireAdmin, async (req, res) => {
     try {
+      const onedashKey = await storage.getSetting("ONEDASH_API_KEY") || process.env.ONEDASH_API_KEY;
+      const maxelpayKey = await storage.getSetting("MAXELPAY_API_KEY") || process.env.MAXELPAY_API_KEY;
+      const maxelpaySecret = await storage.getSetting("MAXELPAY_API_SECRET") || process.env.MAXELPAY_API_SECRET;
+
       res.json({
         onedash: {
-          configured: !!process.env.ONEDASH_API_KEY,
-          keyPreview: process.env.ONEDASH_API_KEY 
-            ? `${process.env.ONEDASH_API_KEY.substring(0, 4)}...${process.env.ONEDASH_API_KEY.slice(-4)}`
+          configured: !!onedashKey,
+          keyPreview: onedashKey 
+            ? `${onedashKey.substring(0, 4)}...${onedashKey.slice(-4)}`
             : null,
         },
         maxelpay: {
-          apiKeyConfigured: !!process.env.MAXELPAY_API_KEY,
-          secretConfigured: !!process.env.MAXELPAY_API_SECRET,
-          keyPreview: process.env.MAXELPAY_API_KEY
-            ? `${process.env.MAXELPAY_API_KEY.substring(0, 4)}...${process.env.MAXELPAY_API_KEY.slice(-4)}`
+          apiKeyConfigured: !!maxelpayKey,
+          secretConfigured: !!maxelpaySecret,
+          keyPreview: maxelpayKey
+            ? `${maxelpayKey.substring(0, 4)}...${maxelpayKey.slice(-4)}`
             : null,
         },
       });
     } catch (error: any) {
       res.status(500).json({ message: error.message || "Failed to fetch API keys status" });
+    }
+  });
+
+  app.post("/api/admin/api-keys", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const { key, value } = req.body;
+      
+      const allowedKeys = ["ONEDASH_API_KEY", "MAXELPAY_API_KEY", "MAXELPAY_API_SECRET"];
+      if (!allowedKeys.includes(key)) {
+        return res.status(400).json({ message: "Invalid setting key" });
+      }
+      
+      if (!value || typeof value !== "string" || value.trim().length === 0) {
+        return res.status(400).json({ message: "Value is required" });
+      }
+
+      await storage.upsertSetting(key, value.trim());
+      res.json({ success: true, message: `${key} updated successfully` });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message || "Failed to update API key" });
+    }
+  });
+
+  app.delete("/api/admin/api-keys/:key", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const { key } = req.params;
+      
+      const allowedKeys = ["ONEDASH_API_KEY", "MAXELPAY_API_KEY", "MAXELPAY_API_SECRET"];
+      if (!allowedKeys.includes(key)) {
+        return res.status(400).json({ message: "Invalid setting key" });
+      }
+
+      await storage.deleteSetting(key);
+      res.json({ success: true, message: `${key} removed successfully` });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message || "Failed to delete API key" });
     }
   });
 
@@ -757,7 +797,7 @@ export async function registerRoutes(
       const signature = req.headers["x-signature"] as string;
       const payload = JSON.stringify(req.body);
 
-      if (!maxelpayService.verifyWebhook(payload, signature || "")) {
+      if (!(await maxelpayService.verifyWebhook(payload, signature || ""))) {
         return res.status(400).json({ message: "Invalid signature" });
       }
 

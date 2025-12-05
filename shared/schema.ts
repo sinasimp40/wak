@@ -152,6 +152,17 @@ export const createVpsRequestSchema = z.object({
 
 export type CreateVpsRequest = z.infer<typeof createVpsRequestSchema>;
 
+// Platform settings table for API keys (stored securely in database)
+export const platformSettings = pgTable("platform_settings", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  key: text("key").notNull().unique(),
+  value: text("value").notNull(),
+  description: text("description"),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export type PlatformSetting = typeof platformSettings.$inferSelect;
+
 // OneDash API response types
 export interface OneDashTariff {
   id: number;

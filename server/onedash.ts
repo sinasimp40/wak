@@ -1,12 +1,14 @@
 import type { OneDashTariff, OneDashOrder, OneDashBalance } from "@shared/schema";
+import { storage } from "./storage";
 
 const ONEDASH_API_URL = "https://rdp-onedash.com/web-api";
 
 class OneDashService {
-  private getApiKey(): string {
-    const apiKey = process.env.ONEDASH_API_KEY;
+  private async getApiKey(): Promise<string> {
+    const dbKey = await storage.getSetting("ONEDASH_API_KEY");
+    const apiKey = dbKey || process.env.ONEDASH_API_KEY;
     if (!apiKey) {
-      throw new Error("OneDash API key not configured. Please set ONEDASH_API_KEY in Secrets.");
+      throw new Error("OneDash API key not configured. Please set it in Admin Settings.");
     }
     return apiKey;
   }
@@ -16,7 +18,7 @@ class OneDashService {
     method: "GET" | "POST" = "GET",
     body?: Record<string, any>
   ): Promise<T> {
-    const apiKey = this.getApiKey();
+    const apiKey = await this.getApiKey();
     
     const response = await fetch(`${ONEDASH_API_URL}${endpoint}`, {
       method,
