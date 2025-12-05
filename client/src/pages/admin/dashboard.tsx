@@ -86,10 +86,6 @@ interface OneDashOrder {
   };
 }
 
-interface SystemInfo {
-  name: string;
-  id: string;
-}
 
 export default function AdminDashboard() {
   const { toast } = useToast();
@@ -125,7 +121,7 @@ export default function AdminDashboard() {
     queryKey: ["/api/admin/onedash/orders"],
   });
 
-  const { data: systems } = useQuery<SystemInfo[]>({
+  const { data: systems } = useQuery<string[]>({
     queryKey: ["/api/systems"],
   });
 
@@ -268,6 +264,31 @@ export default function AdminDashboard() {
       hour: "2-digit",
       minute: "2-digit",
     });
+  };
+
+  const getOsDisplayName = (os: string) => {
+    const names: Record<string, string> = {
+      windows_10_en: "Windows 10 (English)",
+      windows_10_ru: "Windows 10 (Russian)",
+      windows_11_en: "Windows 11 (English)",
+      windows_11_ru: "Windows 11 (Russian)",
+      windows_2012_en: "Windows Server 2012 (English)",
+      windows_2012_ru: "Windows Server 2012 (Russian)",
+      windows_2016_en: "Windows Server 2016 (English)",
+      windows_2016_ru: "Windows Server 2016 (Russian)",
+      windows_2019_en: "Windows Server 2019 (English)",
+      windows_2019_ru: "Windows Server 2019 (Russian)",
+      windows_2022_en: "Windows Server 2022 (English)",
+      windows_2022_ru: "Windows Server 2022 (Russian)",
+      ubuntu_18: "Ubuntu 18.04",
+      ubuntu_20: "Ubuntu 20.04",
+      ubuntu_22: "Ubuntu 22.04",
+      debian_11: "Debian 11",
+      debian_12: "Debian 12",
+      freebsd_13: "FreeBSD 13",
+      astra_ce: "Astra Linux CE",
+    };
+    return names[os] || os;
   };
 
   return (
@@ -664,8 +685,8 @@ export default function AdminDashboard() {
                 </SelectTrigger>
                 <SelectContent>
                   {systems?.map((sys) => (
-                    <SelectItem key={sys.id} value={sys.id}>
-                      {sys.name}
+                    <SelectItem key={sys} value={sys}>
+                      {getOsDisplayName(sys)}
                     </SelectItem>
                   ))}
                 </SelectContent>
