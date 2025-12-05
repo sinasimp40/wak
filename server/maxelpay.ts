@@ -112,6 +112,8 @@ class MaxelPayService {
       }
 
       const data = await response.json();
+      console.log("MaxelPay response status:", response.status);
+      console.log("MaxelPay response data:", JSON.stringify(data, null, 2));
 
       if (!response.ok) {
         console.error("MaxelPay error response:", data);
@@ -128,16 +130,17 @@ class MaxelPayService {
         };
       }
 
-      if (data.url || data.payment_url || data.checkout_url) {
+      if (data.url || data.payment_url || data.checkout_url || data.data?.url || data.data?.payment_url) {
         return {
           success: true,
-          paymentUrl: data.url || data.payment_url || data.checkout_url,
+          paymentUrl: data.url || data.payment_url || data.checkout_url || data.data?.url || data.data?.payment_url,
         };
       }
 
+      console.log("MaxelPay: No payment URL found in response");
       return {
         success: false,
-        error: data.message || data.error || "Failed to create payment",
+        error: data.message || data.error || "Failed to create payment - no payment URL returned",
       };
     } catch (error: any) {
       console.error("MaxelPay error:", error);
