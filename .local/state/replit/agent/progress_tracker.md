@@ -8,3 +8,5 @@
 [x] 8. Fixed NOWPayments black screen issue - payment now opens in new tab instead of iframe
 [x] 9. Implemented atomic balance deduction and order creation in single database transaction
 [x] 10. Added HMAC-SHA512 webhook signature verification for NOWPayments payment confirmations
+[x] 11. Added Check Payment Status feature in admin panel to sync pending payments from NOWPayments
+[x] 12. Created new admin and user accounts (admin@vps.com / admin123, user@vps.com / user123)

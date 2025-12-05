@@ -1038,5 +1038,152 @@ export async function registerRoutes(
     }
   });
 
+  // Admin: Get all transactions
+  app.get("/api/admin/transactions", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const allTransactions = await storage.getAllTransactions();
+      const allUsers = await storage.getAllUsers();
+
+      const enrichedTransactions = allTransactions.map((tx) => {
+        const user = allUsers.find((u) => u.id === tx.userId);
+        return {
+          ...tx,
+          username: user?.username || "Unknown",
+          email: user?.email || "",
+        };
+      });
+
+      res.json(enrichedTransactions);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message || "Failed to fetch transactions" });
+    }
+  });
+
+  // Admin: Get pending transactions
+  app.get("/api/admin/transactions/pending", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const pendingTransactions = await storage.getPendingTransactions();
+      const allUsers = await storage.getAllUsers();
+
+      const enrichedTransactions = pendingTransactions.map((tx) => {
+        const user = allUsers.find((u) => u.id === tx.userId);
+        return {
+          ...tx,
+          username: user?.username || "Unknown",
+          email: user?.email || "",
+        };
+      });
+
+      res.json(enrichedTransactions);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message || "Failed to fetch pending transactions" });
+    }
+  });
+
+  // Admin: Sync pending payments with NOWPayments (atomic and idempotent)
+  app.post("/api/admin/payments/sync", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const pendingTransactions = await storage.getPendingTransactions();
+      let synced = 0;
+      let completed = 0;
+      let failed = 0;
+      const results: Array<{ id: string; status: string; message: string }> = [];
+
+      const allowedCompletedStatuses = ["finished", "confirmed"];
+      const allowedFailedStatuses = ["failed", "expired", "refunded"];
+
+      for (const tx of pendingTransactions) {
+        if (!tx.externalId) {
+          results.push({ id: tx.id, status: "skipped", message: "No external payment ID" });
+          continue;
+        }
+
+        try {
+          const paymentStatus = await nowpaymentsService.getPaymentStatus(tx.externalId);
+          synced++;
+
+          if (paymentStatus && allowedCompletedStatuses.includes(paymentStatus)) {
+            const result = await storage.updateTransactionStatusAtomic(tx.id, "completed", true);
+            if (result.success && result.previousStatus !== "completed") {
+              completed++;
+              results.push({ id: tx.id, status: "completed", message: `Payment confirmed, balance added: $${tx.amount}` });
+            } else {
+              results.push({ id: tx.id, status: "skipped", message: result.message });
+            }
+          } else if (paymentStatus && allowedFailedStatuses.includes(paymentStatus)) {
+            const result = await storage.updateTransactionStatusAtomic(tx.id, paymentStatus, false);
+            if (result.success) {
+              failed++;
+              results.push({ id: tx.id, status: paymentStatus, message: `Payment ${paymentStatus}` });
+            } else {
+              results.push({ id: tx.id, status: "error", message: result.message });
+            }
+          } else {
+            results.push({ id: tx.id, status: "pending", message: `Payment status: ${paymentStatus || "unknown"}` });
+          }
+        } catch (err: any) {
+          results.push({ id: tx.id, status: "error", message: err.message || "Failed to check status" });
+        }
+      }
+
+      res.json({
+        success: true,
+        total: pendingTransactions.length,
+        synced,
+        completed,
+        failed,
+        results,
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message || "Failed to sync payments" });
+    }
+  });
+
+  // Admin: Manually complete a specific transaction (atomic and idempotent)
+  app.post("/api/admin/transactions/:id/complete", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const result = await storage.completeTransactionWithBalance(req.params.id);
+      
+      if (!result.success) {
+        return res.status(400).json({ message: result.message });
+      }
+
+      res.json({ success: true, message: result.message });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message || "Failed to complete transaction" });
+    }
+  });
+
+  // Admin: Check a specific transaction status from NOWPayments
+  app.get("/api/admin/transactions/:id/check", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const tx = await storage.getTransactionById(req.params.id);
+      if (!tx) {
+        return res.status(404).json({ message: "Transaction not found" });
+      }
+
+      if (!tx.externalId) {
+        return res.status(400).json({ message: "Transaction has no external payment ID" });
+      }
+
+      const result = await nowpaymentsService.getPaymentStatusFull(tx.externalId);
+      if (!result) {
+        return res.status(404).json({ message: "Payment not found in NOWPayments" });
+      }
+
+      res.json({
+        transactionId: tx.id,
+        externalId: tx.externalId,
+        localStatus: tx.status,
+        remoteStatus: result.status,
+        payAddress: result.payAddress,
+        payAmount: result.payAmount,
+        payCurrency: result.payCurrency,
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message || "Failed to check transaction status" });
+    }
+  });
+
   return httpServer;
 }

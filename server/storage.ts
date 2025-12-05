@@ -84,6 +84,8 @@ export interface IStorage {
   getTransactionById(id: string): Promise<Transaction | undefined>;
   getTransactionByExternalId(externalId: string): Promise<Transaction | undefined>;
   getTransactionsByUserId(userId: string): Promise<Transaction[]>;
+  getPendingTransactions(): Promise<Transaction[]>;
+  getAllTransactions(): Promise<Transaction[]>;
   updateTransaction(id: string, data: Partial<Transaction>): Promise<void>;
 
   // Stats
@@ -363,8 +365,103 @@ export class DatabaseStorage implements IStorage {
     return db.select().from(transactions).where(eq(transactions.userId, userId)).orderBy(desc(transactions.createdAt));
   }
 
+  async getPendingTransactions(): Promise<Transaction[]> {
+    return db.select().from(transactions).where(eq(transactions.status, "pending")).orderBy(desc(transactions.createdAt));
+  }
+
+  async getAllTransactions(): Promise<Transaction[]> {
+    return db.select().from(transactions).orderBy(desc(transactions.createdAt));
+  }
+
   async updateTransaction(id: string, data: Partial<Transaction>): Promise<void> {
     await db.update(transactions).set({ ...data, updatedAt: new Date() }).where(eq(transactions.id, id));
+  }
+
+  async completeTransactionWithBalance(transactionId: string): Promise<{ success: boolean; message: string }> {
+    return await db.transaction(async (tx) => {
+      const [transaction] = await tx
+        .select()
+        .from(transactions)
+        .where(eq(transactions.id, transactionId))
+        .for("update")
+        .limit(1);
+
+      if (!transaction) {
+        return { success: false, message: "Transaction not found" };
+      }
+
+      if (transaction.status === "completed") {
+        return { success: false, message: "Transaction already completed" };
+      }
+
+      const amount = parseFloat(transaction.amount?.toString() || "0");
+      if (isNaN(amount) || amount <= 0) {
+        return { success: false, message: "Invalid transaction amount" };
+      }
+
+      await tx
+        .update(transactions)
+        .set({ status: "completed", updatedAt: new Date() })
+        .where(eq(transactions.id, transactionId));
+
+      await tx
+        .update(users)
+        .set({
+          balance: sql`${users.balance} + ${amount.toFixed(2)}::decimal`,
+        })
+        .where(eq(users.id, transaction.userId));
+
+      return { success: true, message: `Balance of $${amount.toFixed(2)} added` };
+    });
+  }
+
+  async updateTransactionStatusAtomic(transactionId: string, newStatus: string, addBalance: boolean = false): Promise<{ success: boolean; message: string; previousStatus?: string }> {
+    const allowedStatuses = ["pending", "completed", "failed", "expired", "refunded", "cancelled"];
+    if (!allowedStatuses.includes(newStatus)) {
+      return { success: false, message: `Invalid status: ${newStatus}` };
+    }
+
+    return await db.transaction(async (tx) => {
+      const [transaction] = await tx
+        .select()
+        .from(transactions)
+        .where(eq(transactions.id, transactionId))
+        .for("update")
+        .limit(1);
+
+      if (!transaction) {
+        return { success: false, message: "Transaction not found" };
+      }
+
+      if (transaction.status === newStatus) {
+        return { success: true, message: "Status unchanged", previousStatus: transaction.status };
+      }
+
+      if (transaction.status === "completed" && addBalance) {
+        return { success: false, message: "Transaction already completed, cannot add balance again", previousStatus: transaction.status };
+      }
+
+      await tx
+        .update(transactions)
+        .set({ status: newStatus, updatedAt: new Date() })
+        .where(eq(transactions.id, transactionId));
+
+      if (addBalance && newStatus === "completed") {
+        const amount = parseFloat(transaction.amount?.toString() || "0");
+        if (isNaN(amount) || amount <= 0) {
+          throw new Error("Invalid transaction amount");
+        }
+
+        await tx
+          .update(users)
+          .set({
+            balance: sql`${users.balance} + ${amount.toFixed(2)}::decimal`,
+          })
+          .where(eq(users.id, transaction.userId));
+      }
+
+      return { success: true, message: `Status updated to ${newStatus}`, previousStatus: transaction.status };
+    });
   }
 
   async addToUserBalance(userId: string, amount: number): Promise<void> {
